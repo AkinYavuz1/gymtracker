@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, signOut, getSession, getUser, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
+import { getExerciseGif } from "./lib/exerciseGifs";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -660,14 +661,24 @@ function TemplatePicker({ onSelect, onBack }) {
     const loadTemplates = async () => {
       try {
         const tpls = await getTemplates();
-        setTemplates((tpls || []).map(normaliseTemplate));
+        if (tpls && tpls.length > 0) {
+          // Deduplicate by name in case templates were seeded more than once
+          const seen = new Set();
+          const unique = tpls.filter(t => seen.has(t.name) ? false : seen.add(t.name));
+          setTemplates(unique.map(normaliseTemplate));
+        } else {
+          // Fall back to built-in templates if DB returned nothing
+          setTemplates(TEMPLATES);
+        }
       } catch (e) {
         console.error("Failed to load templates:", e);
-        setTemplates([]);
+        setTemplates(TEMPLATES);
       }
       setLoading(false);
     };
-    loadTemplates();
+    // Timeout safety — never stay stuck on "Loading..."
+    const timeout = setTimeout(() => setLoading(false), 8000);
+    loadTemplates().finally(() => clearTimeout(timeout));
   }, []);
 
   const pages = [];
@@ -734,6 +745,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
   const [rest, setRest] = useState(0); const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [previewEx, setPreviewEx] = useState(null); // { name, equipment, icon, gifUrl, loading }
   const color = template.color;
   useEffect(() => { const i = setInterval(() => setTimer(t => t + 1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => { if (rest > 0) { const i = setInterval(() => setRest(t => t <= 1 ? 0 : t - 1), 1000); return () => clearInterval(i); } }, [rest]);
@@ -830,7 +842,9 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
 
       {edit && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setEdit(null)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 20px" }} /><div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, textAlign: "center", marginBottom: 4 }}>{exs[edit.ei].name}</div><div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginBottom: 24, fontFamily: C.mono }}>Set {edit.si + 1}</div><div style={{ display: "flex", flexDirection: "column", gap: 24, alignItems: "center" }}><WeightStepper value={ew} onChange={setEw} color={color} /><RepBubbles value={er} onChange={setEr} color={color} /></div><button onClick={() => { setExs(p => p.map((e, i) => i === edit.ei ? { ...e, setsData: e.setsData.map((s, j) => j === edit.si ? { ...s, weight: ew, reps: er } : s) } : e)); setEdit(null); }} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", marginTop: 28, background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Save</button></div></div>}
 
-      {showAdd && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAdd(false)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} /><div style={{ fontSize: 20, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 18 }}>Add Exercise</div><div style={{ display: "flex", gap: 6, marginBottom: 18 }}>{Object.keys(EX_LIB).map(k => (<Pill key={k} active={addCat === k} color={color} onClick={() => { setAddCat(k); setAddPg(0); }}>{k}</Pill>))}</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>{(exPgs[addPg] || []).map((ex, i) => { const a = exs.some(e => e.name === ex.name); return (<button key={i} disabled={a} onClick={() => { setExs(p => [...p, { name: ex.name, equipment: ex.equipment, lastWeight: 20, lastReps: 10, sets: 3, setsData: [{ weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }] }]); setShowAdd(false); }} style={{ padding: "16px 14px", borderRadius: 16, border: a ? `1px solid ${color}30` : `1px solid ${C.border}`, background: a ? `${color}08` : C.card, cursor: a ? "default" : "pointer", textAlign: "left", opacity: a ? 0.5 : 1 }}><div style={{ fontSize: 22, marginBottom: 6 }}>{ex.icon}</div><div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 10, color: C.dim, marginTop: 3, fontFamily: C.mono }}>{ex.equipment}</div></button>); })}</div>{exPgs.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{exPgs.map((_, i) => (<button key={i} onClick={() => setAddPg(i)} style={{ width: addPg === i ? 22 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: addPg === i ? color : "rgba(255,255,255,0.1)" }} />))}</div>}</div></div>}
+      {showAdd && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAdd(false)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} /><div style={{ fontSize: 20, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 18 }}>Add Exercise</div><div style={{ display: "flex", gap: 6, marginBottom: 18 }}>{Object.keys(EX_LIB).map(k => (<Pill key={k} active={addCat === k} color={color} onClick={() => { setAddCat(k); setAddPg(0); }}>{k}</Pill>))}</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>{(exPgs[addPg] || []).map((ex, i) => { const a = exs.some(e => e.name === ex.name); return (<button key={i} disabled={a} onClick={async () => { if (a) return; setPreviewEx({ name: ex.name, equipment: ex.equipment, icon: ex.icon, gifUrl: null, loading: true }); setShowAdd(false); const gifUrl = await getExerciseGif(ex.name); setPreviewEx(p => p ? { ...p, gifUrl, loading: false } : null); }} style={{ padding: "16px 14px", borderRadius: 16, border: a ? `1px solid ${color}30` : `1px solid ${C.border}`, background: a ? `${color}08` : C.card, cursor: a ? "default" : "pointer", textAlign: "left", opacity: a ? 0.5 : 1 }}><div style={{ fontSize: 22, marginBottom: 6 }}>{ex.icon}</div><div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 10, color: C.dim, marginTop: 3, fontFamily: C.mono }}>{ex.equipment}</div></button>); })}</div>{exPgs.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{exPgs.map((_, i) => (<button key={i} onClick={() => setAddPg(i)} style={{ width: addPg === i ? 22 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: addPg === i ? color : "rgba(255,255,255,0.1)" }} />))}</div>}</div></div>}
+
+      {previewEx && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", zIndex: 210, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setPreviewEx(null)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} /><div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{previewEx.equipment}</div><div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{previewEx.name}</div></div><div style={{ width: "100%", height: 220, borderRadius: 20, background: C.card, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24, overflow: "hidden", position: "relative" }}>{previewEx.loading ? (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 40 }}>{previewEx.icon}</div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>Loading demo...</div></div>) : previewEx.gifUrl ? (<img src={previewEx.gifUrl} alt={previewEx.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />) : (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 48 }}>{previewEx.icon}</div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>No demo available</div></div>)}</div><div style={{ display: "flex", gap: 10 }}><button onClick={() => { setPreviewEx(null); setShowAdd(true); }} style={{ flex: 1, padding: "14px", borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Back</button><button onClick={() => { setExs(p => [...p, { name: previewEx.name, equipment: previewEx.equipment, lastWeight: 20, lastReps: 10, sets: 3, setsData: [{ weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }] }]); setPreviewEx(null); }} style={{ flex: 2, padding: "14px", borderRadius: 16, border: "none", background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Add to Workout</button></div></div></div>}
     </div>
   );
 }
