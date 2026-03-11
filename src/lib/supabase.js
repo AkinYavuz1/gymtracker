@@ -125,6 +125,21 @@ export async function getTemplates() {
     .from('templates')
     .select('*, template_exercises(*)')
     .order('sort_order');
+
+  // If no templates exist (e.g. DB trigger didn't fire for OAuth user),
+  // seed them now via the RPC and retry once
+  if (!data || data.length === 0) {
+    const user = await getUser();
+    if (user) {
+      await supabase.rpc('seed_default_templates', { p_user_id: user.id });
+      const { data: retried } = await supabase
+        .from('templates')
+        .select('*, template_exercises(*)')
+        .order('sort_order');
+      return retried || [];
+    }
+  }
+
   return data || [];
 }
 

@@ -803,11 +803,13 @@ function HistoryScreen() {
 
 /* ═══ PROFILE MODAL ═══ */
 function ProfileModal({ profile, plan, user, onClose, onLogout }) {
-  if (!profile || !user) return null;
+  if (!user) return null;
 
-  const accountAge = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / (1000 * 60 * 60 * 24));
+  const accountAge = profile?.created_at
+    ? Math.floor((Date.now() - new Date(profile.created_at).getTime()) / (1000 * 60 * 60 * 24))
+    : 0;
   const planData = PLANS[plan];
-  const userName = profile.name || user.user_metadata?.full_name || "Athlete";
+  const userName = profile?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Athlete";
   const userEmail = user.email || "No email";
   const userInitial = userName.charAt(0).toUpperCase();
 
@@ -930,7 +932,25 @@ export default function GymTracker() {
       if (session?.user) {
         setUser(session.user);
         try {
-          const prof = await getProfile();
+          let prof = await getProfile();
+
+          // OAuth users may not have a profile row if the DB trigger missed —
+          // create it now
+          if (!prof) {
+            const name = session.user.user_metadata?.full_name
+              || session.user.user_metadata?.name
+              || session.user.email?.split('@')[0]
+              || 'Athlete';
+            await supabase.from('profiles').upsert({
+              id: session.user.id,
+              name,
+              plan: 'free',
+              ai_queries_today: 0,
+              ai_queries_reset_at: new Date().toISOString().split('T')[0],
+            });
+            prof = await getProfile();
+          }
+
           setProfile(prof);
           if (prof?.plan) setPlan(prof.plan);
         } catch { /* ignore */ }
