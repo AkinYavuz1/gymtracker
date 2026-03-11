@@ -837,15 +837,28 @@ export default function GymTracker() {
 
   // Auth listener
   useEffect(() => {
+    // Fallback timeout — never stay stuck on "Loading..."
+    const timeout = setTimeout(() => setAuthLoading(false), 5000);
+
     const checkAuth = async () => {
-      const session = await getSession();
-      if (session?.user) {
-        setUser(session.user);
-        const prof = await getProfile();
-        setProfile(prof);
-        if (prof?.plan) setPlan(prof.plan);
+      try {
+        const session = await getSession();
+        if (session?.user) {
+          setUser(session.user);
+          try {
+            const prof = await getProfile();
+            setProfile(prof);
+            if (prof?.plan) setPlan(prof.plan);
+          } catch {
+            // Profile fetch failed — still let user in
+          }
+        }
+      } catch {
+        // Session fetch failed — treat as logged out
+      } finally {
+        clearTimeout(timeout);
+        setAuthLoading(false);
       }
-      setAuthLoading(false);
     };
     checkAuth();
 
@@ -853,13 +866,15 @@ export default function GymTracker() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        const prof = await getProfile();
-        setProfile(prof);
-        if (prof?.plan) setPlan(prof.plan);
+        try {
+          const prof = await getProfile();
+          setProfile(prof);
+          if (prof?.plan) setPlan(prof.plan);
+        } catch { /* ignore */ }
 
         // Seed dummy data for new users
         if (event === 'SIGNED_IN') {
-          await seedDummyData();
+          seedDummyData(); // fire and forget
         }
       } else {
         setUser(null);
