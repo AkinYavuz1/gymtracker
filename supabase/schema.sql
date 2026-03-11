@@ -14,14 +14,19 @@ CREATE TABLE public.profiles (
     id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     name            TEXT,
     avatar_url      TEXT,
+    gender          TEXT CHECK (gender IN ('male', 'female', 'other')),
+    age             INTEGER CHECK (age BETWEEN 13 AND 100),
     weight_kg       DECIMAL(5,1),
     height_cm       INTEGER,
     body_fat_pct    DECIMAL(4,1),
     training_goal   TEXT DEFAULT 'hypertrophy'
         CHECK (training_goal IN ('hypertrophy', 'strength', 'endurance', 'general')),
+    experience      TEXT DEFAULT 'intermediate'
+        CHECK (experience IN ('beginner', 'intermediate', 'advanced')),
     unit_system     TEXT DEFAULT 'metric'
         CHECK (unit_system IN ('metric', 'imperial')),
-    
+    onboarding_complete BOOLEAN DEFAULT false,
+
     -- Subscription
     plan            TEXT DEFAULT 'free'
         CHECK (plan IN ('free', 'pro', 'unlimited')),
@@ -439,3 +444,10 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Done! Your database is ready.
 -- Next: Set up Edge Functions (see coach-function.ts)
 -- ============================================================
+
+
+-- ─── MIGRATION: Run this if profiles table already exists ───
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS gender TEXT CHECK (gender IN ('male', 'female', 'other'));
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS age INTEGER CHECK (age BETWEEN 13 AND 100);
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS experience TEXT DEFAULT 'intermediate' CHECK (experience IN ('beginner', 'intermediate', 'advanced'));
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_complete BOOLEAN DEFAULT false;

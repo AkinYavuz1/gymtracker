@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getUser, getProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getUser, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 
 /* ═══ API CONFIG ═══ */
@@ -228,6 +228,206 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
         )}
         <div style={{ height: 12 }} />
       </div>
+    </div>
+  );
+}
+
+/* ═══ ONBOARDING ═══ */
+const GOALS = [
+  { id: "hypertrophy", label: "Build Muscle",  icon: "💪", desc: "Maximize size and volume" },
+  { id: "strength",    label: "Get Stronger",  icon: "🏋️", desc: "Increase max lifts" },
+  { id: "endurance",   label: "Endurance",     icon: "🏃", desc: "Stamina and conditioning" },
+  { id: "general",     label: "Stay Fit",      icon: "⚡", desc: "Overall health and fitness" },
+];
+const EXPERIENCE_LEVELS = [
+  { id: "beginner",     label: "Beginner",     icon: "🌱", desc: "Less than 1 year" },
+  { id: "intermediate", label: "Intermediate", icon: "🔥", desc: "1–3 years" },
+  { id: "advanced",     label: "Advanced",     icon: "🏆", desc: "3+ years" },
+];
+
+function OnboardingScreen({ user, onComplete }) {
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [data, setData] = useState({
+    gender: "",
+    age: "",
+    weight: "",
+    height: "",
+    unit: "metric",
+    goal: "",
+    experience: "",
+  });
+
+  const totalSteps = 4;
+  const progress = ((step + 1) / totalSteps) * 100;
+
+  const set = (key, val) => setData(prev => ({ ...prev, [key]: val }));
+
+  const canNext = () => {
+    if (step === 0) return data.gender !== "";
+    if (step === 1) return data.age !== "" && Number(data.age) >= 13 && Number(data.age) <= 100;
+    if (step === 2) return data.weight !== "";
+    if (step === 3) return data.goal !== "" && data.experience !== "";
+    return true;
+  };
+
+  const finish = async () => {
+    setSaving(true);
+    const weightKg = data.unit === "imperial"
+      ? Math.round(Number(data.weight) * 0.453592 * 10) / 10
+      : Number(data.weight);
+    const heightCm = data.unit === "imperial"
+      ? Math.round(Number(data.height) * 2.54)
+      : Number(data.height);
+    await updateProfile({
+      gender: data.gender,
+      age: Number(data.age),
+      weight_kg: weightKg || null,
+      height_cm: heightCm || null,
+      training_goal: data.goal,
+      experience: data.experience,
+      unit_system: data.unit,
+      onboarding_complete: true,
+    });
+    setSaving(false);
+    onComplete();
+  };
+
+  const weightUnit = data.unit === "imperial" ? "lbs" : "kg";
+  const heightUnit = data.unit === "imperial" ? "in" : "cm";
+
+  return (
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "20px 24px 40px" }}>
+      {/* Progress bar */}
+      <div style={{ paddingTop: 8, marginBottom: 32 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>Step {step + 1} of {totalSteps}</span>
+          {step > 0 && (
+            <button onClick={() => setStep(s => s - 1)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12, fontFamily: C.font }}>← Back</button>
+          )}
+        </div>
+        <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)" }}>
+          <div style={{ height: "100%", borderRadius: 2, background: C.accent, width: `${progress}%`, transition: "width 0.4s ease" }} />
+        </div>
+      </div>
+
+      <div style={{ flex: 1 }}>
+
+        {/* Step 0 — Gender */}
+        {step === 0 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>About You</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>What's your gender?</div>
+            <div style={{ fontSize: 13, color: C.dim, marginBottom: 32 }}>Helps calibrate your AI coach recommendations</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {[{ id: "male", label: "Male", icon: "♂" }, { id: "female", label: "Female", icon: "♀" }, { id: "other", label: "Prefer not to say", icon: "◎" }].map(g => (
+                <button key={g.id} onClick={() => set("gender", g.id)} style={{
+                  padding: "18px 20px", borderRadius: 16, border: `2px solid ${data.gender === g.id ? C.accent : C.border}`,
+                  background: data.gender === g.id ? `${C.accent}12` : C.card,
+                  color: data.gender === g.id ? C.accent : "#fff",
+                  fontSize: 16, fontWeight: 700, fontFamily: C.font, cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 14, textAlign: "left", transition: "all 0.2s"
+                }}>
+                  <span style={{ fontSize: 22 }}>{g.icon}</span>{g.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 1 — Age */}
+        {step === 1 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>About You</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>How old are you?</div>
+            <div style={{ fontSize: 13, color: C.dim, marginBottom: 32 }}>Age affects recovery time and training recommendations</div>
+            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 32 }}>
+              <button onClick={() => set("age", String(Math.max(13, Number(data.age || 25) - 1)))} style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 24, cursor: "pointer" }}>−</button>
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 72, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{data.age || "—"}</div>
+                <div style={{ fontSize: 13, color: C.dim, marginTop: 4 }}>years old</div>
+              </div>
+              <button onClick={() => set("age", String(Math.min(100, Number(data.age || 25) + 1)))} style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.accent}40`, background: `${C.accent}12`, color: C.accent, fontSize: 24, cursor: "pointer" }}>+</button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+              {[18, 22, 25, 30, 35, 40, 45, 50].map(a => (
+                <button key={a} onClick={() => set("age", String(a))} style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${data.age === String(a) ? C.accent : C.border}`, background: data.age === String(a) ? `${C.accent}15` : C.card, color: data.age === String(a) ? C.accent : C.dim, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{a}</button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — Body metrics */}
+        {step === 2 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Body Metrics</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Your measurements</div>
+            <div style={{ fontSize: 13, color: C.dim, marginBottom: 24 }}>Used to estimate volume targets and progress</div>
+            {/* Unit toggle */}
+            <div style={{ display: "flex", background: "rgba(255,255,255,0.05)", borderRadius: 12, padding: 4, marginBottom: 24 }}>
+              {["metric", "imperial"].map(u => (
+                <button key={u} onClick={() => set("unit", u)} style={{ flex: 1, padding: "8px", borderRadius: 9, border: "none", background: data.unit === u ? "rgba(255,255,255,0.1)" : "none", color: data.unit === u ? "#fff" : C.dim, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.font, textTransform: "capitalize" }}>{u}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Weight ({weightUnit}) *</div>
+                <input type="number" value={data.weight} onChange={e => set("weight", e.target.value)} placeholder={data.unit === "imperial" ? "e.g. 180" : "e.g. 80"} style={{ width: "100%", padding: "14px", borderRadius: 12, border: `1px solid ${data.weight ? C.accent : C.border}`, background: C.card, color: "#fff", fontSize: 18, fontWeight: 700, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Height ({heightUnit}) <span style={{ color: "rgba(255,255,255,0.2)" }}>optional</span></div>
+                <input type="number" value={data.height} onChange={e => set("height", e.target.value)} placeholder={data.unit === "imperial" ? "e.g. 71" : "e.g. 178"} style={{ width: "100%", padding: "14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 18, fontWeight: 700, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — Goal + Experience */}
+        {step === 3 && (
+          <div>
+            <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Training Profile</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Your goals</div>
+            <div style={{ fontSize: 13, color: C.dim, marginBottom: 20 }}>Personalises your AI coach sessions</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
+              {GOALS.map(g => (
+                <button key={g.id} onClick={() => set("goal", g.id)} style={{ padding: "16px 12px", borderRadius: 14, border: `2px solid ${data.goal === g.id ? C.accent : C.border}`, background: data.goal === g.id ? `${C.accent}12` : C.card, cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{g.icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: data.goal === g.id ? C.accent : "#fff", fontFamily: C.font }}>{g.label}</div>
+                  <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{g.desc}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Experience Level</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {EXPERIENCE_LEVELS.map(e => (
+                <button key={e.id} onClick={() => set("experience", e.id)} style={{ padding: "14px 16px", borderRadius: 12, border: `2px solid ${data.experience === e.id ? C.ai : C.border}`, background: data.experience === e.id ? `${C.ai}12` : C.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "all 0.2s" }}>
+                  <span style={{ fontSize: 20 }}>{e.icon}</span>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: data.experience === e.id ? C.ai : "#fff", fontFamily: C.font }}>{e.label}</div>
+                    <div style={{ fontSize: 11, color: C.dim }}>{e.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Next / Finish button */}
+      <button
+        onClick={step < totalSteps - 1 ? () => setStep(s => s + 1) : finish}
+        disabled={!canNext() || saving}
+        style={{
+          width: "100%", padding: "16px", borderRadius: 16, border: "none",
+          background: canNext() ? `linear-gradient(135deg, ${C.accent}, #C8E030)` : "rgba(255,255,255,0.06)",
+          color: canNext() ? C.bg : "rgba(255,255,255,0.2)",
+          fontSize: 16, fontWeight: 800, fontFamily: C.font,
+          cursor: canNext() && !saving ? "pointer" : "default",
+          transition: "all 0.3s"
+        }}
+      >
+        {saving ? "Saving..." : step < totalSteps - 1 ? "Continue →" : "Let's Go 🚀"}
+      </button>
     </div>
   );
 }
@@ -943,11 +1143,26 @@ export default function GymTracker() {
     setScreen("home");
   };
 
+  const needsOnboarding = user && profile && profile.onboarding_complete === false;
+
   // Show loading or auth screen
   if (authLoading) {
     return (
       <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ fontSize: 13, color: C.dim }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (needsOnboarding) {
+    return (
+      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }`}</style>
+        <OnboardingScreen user={user} onComplete={async () => {
+          const prof = await getProfile();
+          setProfile(prof);
+        }} />
       </div>
     );
   }
