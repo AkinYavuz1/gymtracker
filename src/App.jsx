@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getUser, getProfile, signInWithGoogle, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getUser, getProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 
 /* ═══ API CONFIG ═══ */
@@ -341,48 +341,7 @@ function AuthScreen({ onSignUp, onSignIn }) {
         </button>
       </form>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, marginBottom: 20 }}>
-        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
-        <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>OR</span>
-        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
-      </div>
-
-      <button
-        onClick={async () => {
-          setError("");
-          setLoading(true);
-          try {
-            const { error: err } = await signInWithGoogle();
-            if (err) setError(err.message || "Google sign-in failed");
-          } catch (e) {
-            setError(e.message || "Google sign-in error");
-          }
-          setLoading(false);
-        }}
-        disabled={loading}
-        style={{
-          padding: "13px 14px",
-          borderRadius: 12,
-          border: `1px solid ${C.border}`,
-          background: C.card,
-          color: "#fff",
-          fontSize: 14,
-          fontWeight: 700,
-          fontFamily: C.font,
-          cursor: loading ? "wait" : "pointer",
-          opacity: loading ? 0.6 : 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 10,
-          marginBottom: 20
-        }}
-      >
-        <span style={{ fontSize: 18 }}>🔐</span>
-        Sign in with Google
-      </button>
-
-      <div style={{ fontSize: 12, color: C.dim }}>
+      <div style={{ fontSize: 12, color: C.dim, marginTop: 24 }}>
         {mode === "login" ? "No account? " : "Have an account? "}
         <button
           onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
@@ -932,25 +891,7 @@ export default function GymTracker() {
       if (session?.user) {
         setUser(session.user);
         try {
-          let prof = await getProfile();
-
-          // OAuth users may not have a profile row if the DB trigger missed —
-          // create it now
-          if (!prof) {
-            const name = session.user.user_metadata?.full_name
-              || session.user.user_metadata?.name
-              || session.user.email?.split('@')[0]
-              || 'Athlete';
-            await supabase.from('profiles').upsert({
-              id: session.user.id,
-              name,
-              plan: 'free',
-              ai_queries_today: 0,
-              ai_queries_reset_at: new Date().toISOString().split('T')[0],
-            });
-            prof = await getProfile();
-          }
-
+          const prof = await getProfile();
           setProfile(prof);
           if (prof?.plan) setPlan(prof.plan);
         } catch { /* ignore */ }
