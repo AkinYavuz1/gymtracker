@@ -40,13 +40,25 @@ CREATE TABLE public.profiles (
 -- Auto-create profile when a user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_user_id UUID;
 BEGIN
-    INSERT INTO public.profiles (id, name, avatar_url)
+    v_user_id := NEW.id;
+
+    -- Create profile with default plan
+    INSERT INTO public.profiles (id, name, avatar_url, plan, ai_queries_today, ai_queries_reset_at)
     VALUES (
-        NEW.id,
+        v_user_id,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', 'Athlete'),
-        NEW.raw_user_meta_data->>'avatar_url'
+        NEW.raw_user_meta_data->>'avatar_url',
+        'free',  -- Default to free plan
+        0,
+        CURRENT_DATE
     );
+
+    -- Seed default workout templates
+    PERFORM public.seed_default_templates(v_user_id);
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

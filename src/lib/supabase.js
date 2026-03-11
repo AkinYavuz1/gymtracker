@@ -59,6 +59,16 @@ export async function getUser() {
   return user;
 }
 
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: typeof window !== 'undefined' ? window.location.origin : undefined,
+    },
+  });
+  return { data, error };
+}
+
 // ─── AI Coach API call ──────────────────────────────────────
 
 export async function callCoachAPI(prompt, label, conversationId) {

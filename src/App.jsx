@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { signUp, signIn, signOut, getSession, getUser, getProfile, signInWithGoogle, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -7,23 +8,7 @@ const PLANS = {
   unlimited: { name: "Unlimited", price: "$9.99",  queries: 999, color: "#A47BFF", badge: "MAX" },
 };
 
-const AI_CONFIG = { model: "claude-haiku-4-5-20251001", maxTokens: 600, inputCostPer1M: 1.00, outputCostPer1M: 5.00 };
-
-function buildSystemPrompt(ctx) {
-  return `You are a concise elite AI strength coach inside a gym app. User data below. Be direct, specific, actionable. Use numbers. Under 150 words. Short paragraphs, no markdown.\n\nUSER DATA:\n${ctx}`;
-}
-function getUserContext() {
-  return `Jamie | Jan 2024 | 82kg 178cm 14%bf | Goal: Hypertrophy\nPRs: Bench 120kg, Squat 180kg, DL 200kg, OHP 80kg\nWeek: 4 workouts, 55.6k vol, 12-day streak, 64min avg\nSplit: PPL+Upper | 8wk vol: 42→48→44→51→47→53→50→56k (+8.2%)\n30d: Arms 9, Chest 8, Back 7, Legs 6, Shoulders 5`;
-}
-
-async function callCoachAPI(prompt, history = []) {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: AI_CONFIG.model, max_tokens: AI_CONFIG.maxTokens, system: buildSystemPrompt(getUserContext()), messages: [...history.map(m => ({ role: m.role, content: m.content })), { role: "user", content: prompt }] }),
-  });
-  const d = await r.json();
-  return { text: d.content?.filter(b => b.type === "text").map(b => b.text).join("") || "Try again.", usage: d.usage || {} };
-}
+const AI_CONFIG = { model: "claude-haiku-4-5-20251001", maxTokens: 600 };
 
 /* ═══ DATA ═══ */
 const TEMPLATES = [
@@ -152,13 +137,13 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
     setMsgs(prev => [...prev, { role: "user", content: label }]);
     setLoading(true);
     try {
-      const history = msgs.filter(m => m.role === "user" || m.role === "assistant");
-      const result = await callCoachAPI(prompt, history);
+      const result = await callCoachAPI(prompt, label);
       setMsgs(prev => [...prev, { role: "assistant", content: result.text }]);
       onUseQuery();
-      const inp = result.usage?.input_tokens || 1200, out = result.usage?.output_tokens || 400;
-      setTotalCost(prev => prev + (inp / 1e6) * 1.0 + (out / 1e6) * 5.0);
-    } catch { setMsgs(prev => [...prev, { role: "assistant", content: "Connection issue. Try again." }]); }
+      setTotalCost(prev => prev + (result.cost_usd || 0));
+    } catch (e) {
+      setMsgs(prev => [...prev, { role: "assistant", content: e.message || "Connection issue. Try again." }]);
+    }
     setLoading(false);
   };
 
@@ -246,18 +231,229 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
   );
 }
 
+/* ═══ AUTH ═══ */
+function AuthScreen({ onSignUp, onSignIn }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      if (mode === "signup") {
+        const { error: err } = await signUp(email, password, name);
+        if (err) setError(err.message || "Signup failed");
+        else { setEmail(""); setPassword(""); setName(""); setTimeout(onSignUp, 500); }
+      } else {
+        const { error: err } = await signIn(email, password);
+        if (err) setError(err.message || "Login failed");
+        else { setEmail(""); setPassword(""); setTimeout(onSignIn, 500); }
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ padding: "40px 20px", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", textAlign: "center" }}>
+      <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", marginBottom: 8, fontFamily: C.font }}>GymTracker</div>
+      <div style={{ fontSize: 13, color: C.dim, marginBottom: 40 }}>AI-powered strength training</div>
+
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {mode === "signup" && (
+          <input
+            type="text"
+            placeholder="Full Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            disabled={loading}
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: `1px solid ${C.border}`,
+              background: C.card,
+              color: "#fff",
+              fontSize: 13,
+              fontFamily: C.font,
+              outline: "none"
+            }}
+          />
+        )}
+        <input
+          type="email"
+          placeholder="Email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={loading}
+          style={{
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            color: "#fff",
+            fontSize: 13,
+            fontFamily: C.font,
+            outline: "none"
+          }}
+        />
+        <input
+          type="password"
+          placeholder="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          disabled={loading}
+          style={{
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            color: "#fff",
+            fontSize: 13,
+            fontFamily: C.font,
+            outline: "none"
+          }}
+        />
+        {error && <div style={{ color: "#FF6B3C", fontSize: 12, fontFamily: C.font }}>{error}</div>}
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            padding: "13px 14px",
+            borderRadius: 12,
+            border: "none",
+            background: C.accent,
+            color: C.bg,
+            fontSize: 14,
+            fontWeight: 700,
+            fontFamily: C.font,
+            cursor: loading ? "wait" : "pointer",
+            opacity: loading ? 0.6 : 1
+          }}
+        >
+          {loading ? "..." : mode === "login" ? "Sign In" : "Sign Up"}
+        </button>
+      </form>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 20, marginBottom: 20 }}>
+        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
+        <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>OR</span>
+        <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
+      </div>
+
+      <button
+        onClick={async () => {
+          setError("");
+          setLoading(true);
+          try {
+            const { error: err } = await signInWithGoogle();
+            if (err) setError(err.message || "Google sign-in failed");
+          } catch (e) {
+            setError(e.message || "Google sign-in error");
+          }
+          setLoading(false);
+        }}
+        disabled={loading}
+        style={{
+          padding: "13px 14px",
+          borderRadius: 12,
+          border: `1px solid ${C.border}`,
+          background: C.card,
+          color: "#fff",
+          fontSize: 14,
+          fontWeight: 700,
+          fontFamily: C.font,
+          cursor: loading ? "wait" : "pointer",
+          opacity: loading ? 0.6 : 1,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 10,
+          marginBottom: 20
+        }}
+      >
+        <span style={{ fontSize: 18 }}>🔐</span>
+        Sign in with Google
+      </button>
+
+      <div style={{ fontSize: 12, color: C.dim }}>
+        {mode === "login" ? "No account? " : "Have an account? "}
+        <button
+          onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
+          style={{
+            background: "none",
+            border: "none",
+            color: C.accent,
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: C.font,
+            textDecoration: "underline"
+          }}
+        >
+          {mode === "login" ? "Sign Up" : "Sign In"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ HOME ═══ */
-function HomeScreen({ onStart, onNav, plan }) {
-  const [m, setM] = useState(false); useEffect(() => { setM(true); }, []);
-  const stats = [{ label: "Workouts", val: "4", sub: "this week" }, { label: "Volume", val: "55.6k", sub: "kg total" }, { label: "Streak", val: "12", sub: "days" }, { label: "Duration", val: "4.3h", sub: "avg/week" }];
+function HomeScreen({ onStart, onNav, plan, user, profile }) {
+  const [m, setM] = useState(false);
+  const [workouts, setWorkouts] = useState([]);
+  const [prs, setPRs] = useState([]);
+  const [volumeTrend, setVolumeTrend] = useState([]);
+  const [stats, setStats] = useState([{ label: "Workouts", val: "—", sub: "this week" }, { label: "Volume", val: "—", sub: "kg total" }, { label: "Streak", val: "—", sub: "days" }, { label: "Duration", val: "—", sub: "avg/week" }]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [w, p, vt] = await Promise.all([
+          getWorkouts(10),
+          getPersonalRecords(),
+          getVolumeTrend()
+        ]);
+        setWorkouts(w);
+        setPRs(p);
+        setVolumeTrend(vt || []);
+
+        // Calculate stats from workouts
+        const weekStart = new Date();
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const weekWorkouts = w.filter(wo => new Date(wo.started_at) >= weekStart);
+        const totalVolume = w.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+        const avgDuration = weekWorkouts.length > 0 ? weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0) / weekWorkouts.length / 60 : 0;
+
+        setStats([
+          { label: "Workouts", val: weekWorkouts.length.toString(), sub: "this week" },
+          { label: "Volume", val: totalVolume > 0 ? (totalVolume / 1000).toFixed(1) + "k" : "—", sub: "kg total" },
+          { label: "Streak", val: "—", sub: "days" },
+          { label: "Duration", val: avgDuration > 0 ? (avgDuration / 60).toFixed(1) + "h" : "—", sub: "avg/week" }
+        ]);
+      } catch (e) {
+        console.error("Failed to load home data:", e);
+      }
+      setM(true);
+    };
+    loadData();
+  }, []);
+
+  const userName = profile?.full_name ? profile.full_name.split(" ")[0] : "User";
+  const userInitial = userName.charAt(0).toUpperCase();
   const wd = [true, true, false, true, true, false, false];
   return (
     <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transform: m ? "none" : "translateY(10px)", transition: "all .5s cubic-bezier(.22,1,.36,1)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 18px" }}>
-        <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Sunday, Mar 9</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Good evening</div></div>
+        <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Good evening</div></div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {plan !== "free" && <span style={{ padding: "3px 8px", borderRadius: 6, background: `${PLANS[plan].color}20`, color: PLANS[plan].color, fontSize: 9, fontWeight: 800, fontFamily: C.mono }}>{PLANS[plan].badge}</span>}
-          <div style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font }}>J</div>
+          <div style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font }}>{userInitial}</div>
         </div>
       </div>
       <button onClick={onStart} style={{ width: "100%", padding: "20px 22px", border: "none", borderRadius: 22, background: `linear-gradient(135deg, ${C.accent} 0%, #C8E030 100%)`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", overflow: "hidden" }}>
@@ -271,16 +467,38 @@ function HomeScreen({ onStart, onNav, plan }) {
       </button>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === 6 ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === 6 ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === 6 ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
-      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>↑ 8.2%</div></div><MiniChart data={CHART} /></div>
-      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("stats")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{PRS.map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.weight}</span><span style={{ fontSize: 11, color: C.accent, fontWeight: 700, fontFamily: C.mono }}>+{p.trend}</span></div></div>))}</div>
+      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>↑ {volumeTrend.length > 1 ? Math.round(((volumeTrend[volumeTrend.length - 1]?.v - volumeTrend[0]?.v) / volumeTrend[0]?.v * 100 + Number.EPSILON) * 100) / 100 : 0}%</div></div><MiniChart data={volumeTrend.length > 0 ? volumeTrend : [{ w: "W1", v: 0 }]} /></div>
+      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("stats")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.weight_kg}kg</span></div></div>))}</div>
     </div>
   );
 }
 
 /* ═══ TEMPLATE PICKER ═══ */
 function TemplatePicker({ onSelect, onBack }) {
-  const [pg, setPg] = useState(0); const pages = []; for (let i = 0; i < TEMPLATES.length; i += 2) pages.push(TEMPLATES.slice(i, i + 2));
-  return (<div style={{ padding: "0 20px 40px" }}><div style={{ padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button></div><div style={{ textAlign: "center", padding: "20px 0 24px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Pick a Template</div></div><div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>{pages[pg].map(t => (<button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "22px 20px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}><div><div style={{ fontSize: 30, marginBottom: 8 }}>{t.icon}</div><div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.label} Day</div><div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{t.exercises.length} exercises · ~{t.exercises.reduce((a, e) => a + e.sets, 0)} sets</div></div><div style={{ width: 44, height: 44, borderRadius: 14, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div></div></button>))}</div>{pages.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{pages.map((_, i) => (<button key={i} onClick={() => setPg(i)} style={{ width: pg === i ? 24 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: pg === i ? C.accent : "rgba(255,255,255,0.1)", transition: "all .3s ease" }} />))}</div>}</div>);
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [pg, setPg] = useState(0);
+
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const tpls = await getTemplates();
+        setTemplates(tpls || []);
+      } catch (e) {
+        console.error("Failed to load templates:", e);
+        setTemplates([]);
+      }
+      setLoading(false);
+    };
+    loadTemplates();
+  }, []);
+
+  const pages = [];
+  for (let i = 0; i < templates.length; i += 2) pages.push(templates.slice(i, i + 2));
+
+  if (loading) return <div style={{ padding: "0 20px 40px", textAlign: "center", paddingTop: 100 }}><div style={{ color: C.dim }}>Loading templates...</div></div>;
+
+  return (<div style={{ padding: "0 20px 40px" }}><div style={{ padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button></div><div style={{ textAlign: "center", padding: "20px 0 24px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Pick a Template</div></div><div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>{pages[pg]?.map(t => { const exCount = t.template_exercises?.length || 0; return (<button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "22px 20px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}><div><div style={{ fontSize: 30, marginBottom: 8 }}>{t.icon}</div><div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.label} Day</div><div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{exCount} exercises</div></div><div style={{ width: 44, height: 44, borderRadius: 14, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div></div></button>); })}</div>{pages.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{pages.map((_, i) => (<button key={i} onClick={() => setPg(i)} style={{ width: pg === i ? 24 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: pg === i ? C.accent : "rgba(255,255,255,0.1)", transition: "all .3s ease" }} />))}</div>}</div>);
 }
 
 /* ═══ WORKOUT ═══ */
@@ -289,6 +507,7 @@ function WorkoutScreen({ template, onFinish, onBack }) {
   const [exs, setExs] = useState(() => template.exercises.map(e => ({ ...e, setsData: Array.from({ length: e.sets }, () => ({ weight: e.lastWeight, reps: e.lastReps, done: false })) })));
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
   const [rest, setRest] = useState(0); const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
+  const [saving, setSaving] = useState(false);
   const color = template.color;
   useEffect(() => { const i = setInterval(() => setTimer(t => t + 1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => { if (rest > 0) { const i = setInterval(() => setRest(t => t <= 1 ? 0 : t - 1), 1000); return () => clearInterval(i); } }, [rest]);
@@ -296,9 +515,66 @@ function WorkoutScreen({ template, onFinish, onBack }) {
   const ts = exs.reduce((a, e) => a + e.setsData.length, 0), ds = exs.reduce((a, e) => a + e.setsData.filter(s => s.done).length, 0);
   const catExs = EX_LIB[addCat] || []; const exPgs = []; for (let i = 0; i < catExs.length; i += 4) exPgs.push(catExs.slice(i, i + 4));
 
+  const saveWorkout = async () => {
+    setSaving(true);
+    try {
+      const user = await getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      // Calculate total volume
+      let totalVolume = 0;
+      exs.forEach(ex => {
+        ex.setsData.forEach(set => {
+          if (set.done) totalVolume += set.weight * set.reps;
+        });
+      });
+
+      // Insert workout
+      const { data: workout, error: workoutError } = await supabase
+        .from("workouts")
+        .insert({
+          user_id: user.id,
+          title: template.label + " Day",
+          started_at: new Date(Date.now() - timer * 1000).toISOString(),
+          finished_at: new Date().toISOString(),
+          duration_secs: timer,
+          total_volume_kg: totalVolume,
+          notes: ""
+        })
+        .select()
+        .single();
+
+      if (workoutError) throw workoutError;
+
+      // Insert workout sets
+      for (const ex of exs) {
+        for (const set of ex.setsData) {
+          if (set.done) {
+            const { error: setError } = await supabase.from("workout_sets").insert({
+              workout_id: workout.id,
+              exercise_name: ex.name,
+              set_number: ex.setsData.indexOf(set) + 1,
+              weight_kg: set.weight,
+              reps: set.reps,
+              completed: true,
+              rpe: 5
+            });
+            if (setError) console.error("Error saving set:", setError);
+          }
+        }
+      }
+
+      onFinish();
+    } catch (e) {
+      console.error("Error saving workout:", e);
+      alert("Failed to save workout: " + (e.message || "Unknown error"));
+    }
+    setSaving(false);
+  };
+
   return (
     <div style={{ padding: "0 20px 110px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer" }}>✕</button><button onClick={onFinish} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Finish ✓</button></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={saveWorkout} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : "✓"}</button></div>
       <div style={{ textAlign: "center", padding: "10px 0 20px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>{template.label} Day</div><div style={{ fontSize: 42, fontWeight: 800, color: "#fff", fontFamily: C.font, letterSpacing: -2, lineHeight: 1, margin: "4px 0 10px" }}>{fmt(timer)}</div><div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}><div style={{ width: 140, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 2, background: color, width: `${(ds / ts) * 100}%`, transition: "width .4s ease" }} /></div><span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ds}/{ts}</span></div></div>
       {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
       {exs.map((ex, ei) => (
@@ -327,25 +603,206 @@ function WorkoutScreen({ template, onFinish, onBack }) {
 
 /* ═══ STATS ═══ */
 function StatsScreen() {
-  const [m, setM] = useState(false); useEffect(() => { setM(true); }, []);
-  const ms = [{ name: "Chest", s: 8, color: "#DFFF3C" }, { name: "Back", s: 7, color: "#3CFFF0" }, { name: "Legs", s: 6, color: "#FF6B3C" }, { name: "Shoulders", s: 5, color: "#B47CFF" }, { name: "Arms", s: 9, color: "#47B8FF" }]; const mx = 9;
-  return (<div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}><div style={{ padding: "14px 0 18px" }}><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Analytics</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Progress</div></div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{[{ l: "Workouts", v: "47", c: "#DFFF3C" }, { l: "Volume", v: "284k", c: "#3CFFF0" }, { l: "Avg Time", v: "58m", c: "#FF6B3C" }, { l: "Streak", v: "18d", c: "#B47CFF" }].map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.l}</div><div style={{ fontSize: 32, fontWeight: 800, color: s.c, fontFamily: C.font, lineHeight: 1 }}>{s.v}</div></div>))}</div><div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>8-Week Volume</div><MiniChart data={CHART} h={70} /></div><div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>Muscle Split</div>{ms.map((mg, i) => (<div key={i} style={{ marginBottom: 12 }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}><span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{mg.name}</span><span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>{mg.s}</span></div><div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 3, background: mg.color, width: m ? `${(mg.s / mx) * 100}%` : "0%", transition: `width .7s cubic-bezier(.22,1,.36,1) ${.15 + i * .08}s` }} /></div></div>))}</div></div>);
+  const [m, setM] = useState(false);
+  const [volumeTrend, setVolumeTrend] = useState([]);
+  const [workouts, setWorkouts] = useState([]);
+  const [prs, setPRs] = useState([]);
+
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [vt, w, p] = await Promise.all([
+          getVolumeTrend(),
+          getWorkouts(100),
+          getPersonalRecords()
+        ]);
+        setVolumeTrend(vt || []);
+        setWorkouts(w || []);
+        setPRs(p || []);
+      } catch (e) {
+        console.error("Failed to load stats:", e);
+      }
+      setM(true);
+    };
+    loadStats();
+  }, []);
+
+  // Calculate muscle split from workouts
+  const muscleCounts = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0 };
+  const muscleColors = { "Chest": "#DFFF3C", "Back": "#3CFFF0", "Legs": "#FF6B3C", "Shoulders": "#B47CFF", "Arms": "#47B8FF" };
+
+  const totalVolume = workouts.reduce((sum, w) => sum + (w.total_volume_kg || 0), 0);
+  const avgDuration = workouts.length > 0 ? workouts.reduce((sum, w) => sum + (w.duration_secs || 0), 0) / workouts.length / 60 : 0;
+  const ms = Object.entries(muscleCounts).map(([name, count]) => ({ name, s: count, color: muscleColors[name] }));
+  const mx = Math.max(...ms.map(m => m.s), 1);
+
+  const stats = [
+    { l: "Workouts", v: workouts.length.toString(), c: "#DFFF3C" },
+    { l: "Volume", v: (totalVolume / 1000).toFixed(0) + "k", c: "#3CFFF0" },
+    { l: "Avg Time", v: Math.round(avgDuration) + "m", c: "#FF6B3C" },
+    { l: "PRs", v: prs.length.toString(), c: "#B47CFF" }
+  ];
+
+  return (
+    <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
+      <div style={{ padding: "14px 0 18px" }}>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Analytics</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Progress</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
+        {stats.map((s, i) => (
+          <div key={i} style={{ background: C.card, borderRadius: 16, padding: "16px", border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.l}</div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: s.c, fontFamily: C.font, lineHeight: 1 }}>{s.v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>8-Week Volume</div>
+        <MiniChart data={volumeTrend.length > 0 ? volumeTrend : [{ w: "W1", v: 0 }]} h={70} />
+      </div>
+      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>Muscle Split</div>
+        {ms.map((mg, i) => (
+          <div key={i} style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{mg.name}</span>
+              <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>{mg.s}</span>
+            </div>
+            <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 3, background: mg.color, width: m ? `${(mg.s / mx) * 100}%` : "0%", transition: `width .7s cubic-bezier(.22,1,.36,1) ${.15 + i * .08}s` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ═══ HISTORY ═══ */
 function HistoryScreen() {
-  const [m, setM] = useState(false); useEffect(() => { setM(true); }, []);
-  return (<div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}><div style={{ padding: "14px 0 18px" }}><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Log</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>History</div></div>{HISTORY.map((w, i) => (<div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 10, height: 10, borderRadius: 5, background: w.color }} /><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{w.title}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{w.date} · {w.exercises} exercises</div></div></div><div style={{ textAlign: "right" }}><div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.mono }}>{w.duration}</div><div style={{ fontSize: 11, color: C.dim }}>{w.volume}</div></div></div></div>))}</div>);
+  const [m, setM] = useState(false);
+  const [workouts, setWorkouts] = useState([]);
+
+  useEffect(() => {
+    const loadWorkouts = async () => {
+      try {
+        const w = await getWorkouts(20);
+        setWorkouts(w || []);
+      } catch (e) {
+        console.error("Failed to load workouts:", e);
+      }
+      setM(true);
+    };
+    loadWorkouts();
+  }, []);
+
+  const colors = ["#DFFF3C", "#3CFFF0", "#FF6B3C", "#B47CFF", "#47B8FF"];
+
+  return (
+    <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
+      <div style={{ padding: "14px 0 18px" }}>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Log</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>History</div>
+      </div>
+      {workouts.map((w, i) => (
+        <div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 5, background: colors[i % colors.length] }} />
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{w.title || "Workout"}</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{new Date(w.started_at).toLocaleDateString()} · {Math.round((w.duration_secs || 0) / 60)}min</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.mono }}>{Math.round((w.duration_secs || 0) / 60)}m</div>
+              <div style={{ fontSize: 11, color: C.dim }}>{((w.total_volume_kg || 0) / 1000).toFixed(1)}k kg</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 /* ═══ APP SHELL ═══ */
 export default function GymTracker() {
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [screen, setScreen] = useState("home");
   const [tab, setTab] = useState("home");
   const [tpl, setTpl] = useState(null);
   const [plan, setPlan] = useState("free");
   const [queriesUsed, setQueriesUsed] = useState(0);
   const scrollRef = useRef(null);
+
+  // Auth listener
+  useEffect(() => {
+    const checkAuth = async () => {
+      const session = await getSession();
+      if (session?.user) {
+        setUser(session.user);
+        const prof = await getProfile();
+        setProfile(prof);
+        if (prof?.plan) setPlan(prof.plan);
+      }
+      setAuthLoading(false);
+    };
+    checkAuth();
+
+    // Listen for OAuth redirects and session changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        const prof = await getProfile();
+        setProfile(prof);
+        if (prof?.plan) setPlan(prof.plan);
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    return () => subscription?.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    setProfile(null);
+    setScreen("home");
+  };
+
+  // Show loading or auth screen
+  if (authLoading) {
+    return (
+      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontSize: 13, color: C.dim }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    const refreshAuth = async () => {
+      const session = await getSession();
+      if (session?.user) {
+        setUser(session.user);
+        const prof = await getProfile();
+        setProfile(prof);
+        if (prof?.plan) setPlan(prof.plan);
+      }
+    };
+
+    return (
+      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+        <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }`}</style>
+        <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} />
+      </div>
+    );
+  }
 
   const nav = (t) => { setTab(t); setScreen(t); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
   const tabs = [{ id: "home", icon: "⌂", label: "Home" }, { id: "coach", icon: "🧠", label: "Coach" }, { id: "history", icon: "☰", label: "History" }, { id: "stats", icon: "◈", label: "Stats" }];
@@ -355,11 +812,11 @@ export default function GymTracker() {
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; } @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 28px 0", color: "#fff", fontSize: 13, fontWeight: 600 }}>
-        <span style={{ fontFamily: C.mono }}>9:41</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}><svg width="16" height="11" viewBox="0 0 16 11" fill="none"><rect x="0" y="3" width="3" height="8" rx="1" fill="white"/><rect x="4.5" y="2" width="3" height="9" rx="1" fill="white"/><rect x="9" y=".5" width="3" height="10.5" rx="1" fill="white"/><rect x="13" y="0" width="3" height="11" rx="1" fill="white"/></svg><div style={{ width: 24, height: 11, borderRadius: 3, border: "1px solid rgba(255,255,255,0.4)", padding: 1 }}><div style={{ width: "75%", height: "100%", borderRadius: 1.5, background: C.accent }} /></div></div>
+        <span style={{ fontFamily: C.mono }}>{profile?.full_name || "User"}</span>
+        <button onClick={handleLogout} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: C.font, textDecoration: "underline" }}>Logout</button>
       </div>
       <div ref={scrollRef} style={{ height: "calc(100% - 40px - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} />}
+        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); setScreen("workout"); setTab(null); }} onBack={() => nav("home")} />}
         {screen === "workout" && tpl && <WorkoutScreen template={tpl} onFinish={() => nav("home")} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => setScreen("pricing")} />}
