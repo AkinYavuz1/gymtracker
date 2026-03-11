@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getUser, getProfile, signInWithGoogle, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getUser, getProfile, signInWithGoogle, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -726,11 +726,93 @@ function HistoryScreen() {
   );
 }
 
+/* ═══ PROFILE MODAL ═══ */
+function ProfileModal({ profile, plan, user, onClose, onLogout }) {
+  if (!profile || !user) return null;
+
+  const accountAge = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / (1000 * 60 * 60 * 24));
+  const planData = PLANS[plan];
+  const userName = profile.name || user.user_metadata?.full_name || "Athlete";
+  const userEmail = user.email || "No email";
+  const userInitial = userName.charAt(0).toUpperCase();
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 300, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 40px" }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 20px" }} />
+
+        {/* Avatar */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 20, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: C.bg, fontFamily: C.font }}>
+            {userInitial}
+          </div>
+        </div>
+
+        {/* Name */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>
+            {userName}
+          </div>
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>
+            {userEmail}
+          </div>
+        </div>
+
+        {/* Account Info */}
+        <div style={{ background: C.card, borderRadius: 16, padding: "16px", border: `1px solid ${C.border}`, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Account Type</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 4, background: planData.color }} />
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", textTransform: "capitalize" }}>{plan}</div>
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Member For</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>
+                {accountAge === 0 ? "Today" : `${accountAge}d`}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Plan Details */}
+        <div style={{ background: `${planData.color}08`, borderRadius: 16, padding: "14px", border: `1px solid ${planData.color}30`, marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: planData.color, fontWeight: 700, textAlign: "center" }}>
+            {plan === "free" ? "5 AI queries/day" : plan === "pro" ? "30 AI queries/day" : "Unlimited AI queries"}
+          </div>
+        </div>
+
+        {/* Logout Button */}
+        <button
+          onClick={onLogout}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 14,
+            border: "1px solid rgba(255,80,80,0.3)",
+            background: "rgba(255,80,80,0.08)",
+            color: "#FF6B3C",
+            fontSize: 14,
+            fontWeight: 700,
+            fontFamily: C.font,
+            cursor: "pointer"
+          }}
+        >
+          Logout
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ═══ APP SHELL ═══ */
 export default function GymTracker() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [screen, setScreen] = useState("home");
   const [tab, setTab] = useState("home");
   const [tpl, setTpl] = useState(null);
@@ -759,6 +841,11 @@ export default function GymTracker() {
         const prof = await getProfile();
         setProfile(prof);
         if (prof?.plan) setPlan(prof.plan);
+
+        // Seed dummy data for new users
+        if (event === 'SIGNED_IN') {
+          await seedDummyData();
+        }
       } else {
         setUser(null);
         setProfile(null);
@@ -813,7 +900,23 @@ export default function GymTracker() {
       <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; } @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 28px 0", color: "#fff", fontSize: 13, fontWeight: 600 }}>
         <span style={{ fontFamily: C.mono }}>{profile?.full_name || "User"}</span>
-        <button onClick={handleLogout} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: C.font, textDecoration: "underline" }}>Logout</button>
+        <button
+          onClick={() => setProfileModalOpen(true)}
+          style={{
+            background: "none",
+            border: "none",
+            color: "#fff",
+            cursor: "pointer",
+            fontSize: 20,
+            fontWeight: 600,
+            fontFamily: C.font,
+            padding: "4px 8px",
+            opacity: 0.8,
+            transition: "opacity 0.2s"
+          }}
+        >
+          ⚙️
+        </button>
       </div>
       <div ref={scrollRef} style={{ height: "calc(100% - 40px - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
         {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} />}
@@ -830,6 +933,19 @@ export default function GymTracker() {
         </div>
       )}
       <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+
+      {profileModalOpen && (
+        <ProfileModal
+          profile={profile}
+          user={user}
+          plan={plan}
+          onClose={() => setProfileModalOpen(false)}
+          onLogout={() => {
+            setProfileModalOpen(false);
+            handleLogout();
+          }}
+        />
+      )}
     </div>
   );
 }
