@@ -1,0 +1,30 @@
+{
+  "name": "gymtracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "db:push": "supabase db push",
+    "functions:deploy": "supabase functions deploy coach && supabase functions deploy stripe-webhook",
+    "setup": "echo '1. Run: supabase login' && echo '2. Run: supabase link --project-ref YOUR_REF' && echo '3. Paste supabase/schema.sql into SQL Editor' && echo '4. Run: npm run functions:deploy'"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.39",
+    "tailwindcss": "^3.4.6",
+    "vite": "^5.3.4"
+  }
+}

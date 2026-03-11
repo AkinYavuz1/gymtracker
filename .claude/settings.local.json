@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s \"https://bscwtpvpbegsvjdwmsdr.supabase.co/rest/v1/\" \\\\\n  -H \"apikey: sb_publishable_EipruYKXIKi8gqpBwBcwgg_oIP2H9Oy\" \\\\\n  -H \"Authorization: Bearer sb_publishable_EipruYKXIKi8gqpBwBcwgg_oIP2H9Oy\" \\\\\n  -w \"\\\\nHTTP Status: %{http_code}\")",
+      "Bash(curl -s \"https://bscwtpvpbegsvjdwmsdr.supabase.co/rest/v1/profiles?limit=1\" \\\\\n  -H \"apikey: sb_publishable_EipruYKXIKi8gqpBwBcwgg_oIP2H9Oy\" \\\\\n  -H \"Authorization: Bearer sb_publishable_EipruYKXIKi8gqpBwBcwgg_oIP2H9Oy\" \\\\\n  -w \"\\\\nHTTP Status: %{http_code}\")",
+      "Bash(cd C:/gymtracker && npm run dev -- --port 3000)",
+      "Bash(cd C:/gymtracker && npx vite build 2>&1 | tail -20)",
+      "Bash(cd C:/gymtracker && npx vite build 2>&1 | tail -8)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(winget upgrade:*)",
+      "Bash(npm run:*)",
+      "Bash(where npm:*)",
+      "Read(//c/Program Files/nodejs/**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(export:*)",
+      "Bash(bash gradlew:*)",
+      "Bash(java:*)",
+      "WebFetch(domain:localhost)"
+    ]
+  }
+}
