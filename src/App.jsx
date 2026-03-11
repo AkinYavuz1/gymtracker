@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, signOut, getSession, getUser, getProfile, signInWithGoogle, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -505,7 +506,7 @@ function TemplatePicker({ onSelect, onBack }) {
 }
 
 /* ═══ WORKOUT ═══ */
-function WorkoutScreen({ template, onFinish, onBack }) {
+function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
   const [timer, setTimer] = useState(0);
   const [exs, setExs] = useState(() => template.exercises.map(e => ({ ...e, setsData: Array.from({ length: e.sets }, () => ({ weight: e.lastWeight, reps: e.lastReps, done: false })) })));
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
@@ -521,50 +522,58 @@ function WorkoutScreen({ template, onFinish, onBack }) {
   const saveWorkout = async () => {
     setSaving(true);
     try {
-      const user = await getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Calculate total volume
+      // Calculate total volume from completed sets
       let totalVolume = 0;
+      const completedSets = [];
       exs.forEach(ex => {
-        ex.setsData.forEach(set => {
-          if (set.done) totalVolume += set.weight * set.reps;
-        });
-      });
-
-      // Insert workout
-      const { data: workout, error: workoutError } = await supabase
-        .from("workouts")
-        .insert({
-          user_id: user.id,
-          title: template.label + " Day",
-          started_at: new Date(Date.now() - timer * 1000).toISOString(),
-          finished_at: new Date().toISOString(),
-          duration_secs: timer,
-          total_volume_kg: totalVolume,
-          notes: ""
-        })
-        .select()
-        .single();
-
-      if (workoutError) throw workoutError;
-
-      // Insert workout sets
-      for (const ex of exs) {
-        for (const set of ex.setsData) {
+        ex.setsData.forEach((set, si) => {
           if (set.done) {
-            const { error: setError } = await supabase.from("workout_sets").insert({
-              workout_id: workout.id,
+            totalVolume += set.weight * set.reps;
+            completedSets.push({
               exercise_name: ex.name,
-              set_number: ex.setsData.indexOf(set) + 1,
+              set_number: si + 1,
               weight_kg: set.weight,
               reps: set.reps,
               completed: true,
               rpe: 5
             });
-            if (setError) console.error("Error saving set:", setError);
           }
-        }
+        });
+      });
+
+      const workoutData = {
+        title: template.label + " Day",
+        started_at: new Date(Date.now() - timer * 1000).toISOString(),
+        finished_at: new Date().toISOString(),
+        duration_secs: timer,
+        total_volume_kg: totalVolume,
+        notes: ""
+      };
+
+      if (!isOnline) {
+        // Save to offline queue
+        queueWorkout(workoutData, completedSets);
+        onFinish();
+        return;
+      }
+
+      // Online — save directly to database
+      const user = await getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: workout, error: workoutError } = await supabase
+        .from("workouts")
+        .insert({ ...workoutData, user_id: user.id })
+        .select()
+        .single();
+
+      if (workoutError) throw workoutError;
+
+      if (completedSets.length > 0) {
+        const { error: setsError } = await supabase
+          .from("workout_sets")
+          .insert(completedSets.map(s => ({ ...s, workout_id: workout.id })));
+        if (setsError) console.error("Error saving sets:", setsError);
       }
 
       onFinish();
@@ -577,7 +586,7 @@ function WorkoutScreen({ template, onFinish, onBack }) {
 
   return (
     <div style={{ padding: "0 20px 110px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={saveWorkout} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : "✓"}</button></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={saveWorkout} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : isOnline ? "✓" : "✓ (offline)"}</button></div>
       <div style={{ textAlign: "center", padding: "10px 0 20px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>{template.label} Day</div><div style={{ fontSize: 42, fontWeight: 800, color: "#fff", fontFamily: C.font, letterSpacing: -2, lineHeight: 1, margin: "4px 0 10px" }}>{fmt(timer)}</div><div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}><div style={{ width: 140, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 2, background: color, width: `${(ds / ts) * 100}%`, transition: "width .4s ease" }} /></div><span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ds}/{ts}</span></div></div>
       {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
       {exs.map((ex, ei) => (
@@ -816,6 +825,9 @@ export default function GymTracker() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingSync, setPendingSync] = useState(0);
+  const [syncing, setSyncing] = useState(false);
   const [screen, setScreen] = useState("home");
   const [tab, setTab] = useState("home");
   const [tpl, setTpl] = useState(null);
@@ -856,6 +868,33 @@ export default function GymTracker() {
     });
 
     return () => subscription?.unsubscribe();
+  }, []);
+
+  // Online/offline detection + auto-sync
+  useEffect(() => {
+    setPendingSync(getPendingCount());
+
+    const handleOnline = async () => {
+      setIsOnline(true);
+      const pending = getPendingCount();
+      if (pending > 0) {
+        setSyncing(true);
+        const { synced } = await syncPendingWorkouts();
+        if (synced > 0) setPendingSync(getPendingCount());
+        setSyncing(false);
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -921,10 +960,35 @@ export default function GymTracker() {
           ⚙️
         </button>
       </div>
+      {/* Offline / syncing banner */}
+      {(!isOnline || syncing || pendingSync > 0) && (
+        <div style={{
+          background: syncing ? `${C.ai}20` : isOnline && pendingSync > 0 ? `${C.accent}20` : "rgba(255,107,60,0.15)",
+          borderBottom: `1px solid ${syncing ? C.ai : isOnline && pendingSync > 0 ? C.accent : "#FF6B3C"}30`,
+          padding: "6px 20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          fontSize: 11,
+          fontFamily: C.mono,
+          color: syncing ? C.ai : isOnline && pendingSync > 0 ? C.accent : "#FF6B3C",
+          fontWeight: 600
+        }}>
+          <div style={{ width: 6, height: 6, borderRadius: 3, background: "currentColor", animation: (syncing || !isOnline) ? "pulse 1.2s infinite" : "none" }} />
+          {syncing
+            ? "Syncing workouts..."
+            : !isOnline
+            ? `Offline${pendingSync > 0 ? ` · ${pendingSync} workout${pendingSync > 1 ? "s" : ""} queued` : " · workouts will save locally"}`
+            : `${pendingSync} workout${pendingSync > 1 ? "s" : ""} pending sync`
+          }
+        </div>
+      )}
+
       <div ref={scrollRef} style={{ height: "calc(100% - 40px - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
         {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); setScreen("workout"); setTab(null); }} onBack={() => nav("home")} />}
-        {screen === "workout" && tpl && <WorkoutScreen template={tpl} onFinish={() => nav("home")} onBack={() => nav("home")} />}
+        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} onFinish={() => { setPendingSync(getPendingCount()); nav("home"); }} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => setScreen("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen />}
