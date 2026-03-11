@@ -16,7 +16,9 @@
       "Bash(export:*)",
       "Bash(bash gradlew:*)",
       "Bash(java:*)",
-      "WebFetch(domain:localhost)"
+      "WebFetch(domain:localhost)",
+      "Bash(gh auth:*)",
+      "Bash(winget install:*)"
     ]
   }
 }

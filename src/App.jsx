@@ -412,6 +412,10 @@ function HomeScreen({ onStart, onNav, plan, user, profile }) {
   const [stats, setStats] = useState([{ label: "Workouts", val: "—", sub: "this week" }, { label: "Volume", val: "—", sub: "kg total" }, { label: "Streak", val: "—", sub: "days" }, { label: "Duration", val: "—", sub: "avg/week" }]);
 
   useEffect(() => {
+    // Show UI immediately
+    setM(true);
+
+    // Load data in background
     const loadData = async () => {
       try {
         const [w, p, vt] = await Promise.all([
@@ -439,7 +443,6 @@ function HomeScreen({ onStart, onNav, plan, user, profile }) {
       } catch (e) {
         console.error("Failed to load home data:", e);
       }
-      setM(true);
     };
     loadData();
   }, []);
