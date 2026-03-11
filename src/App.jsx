@@ -478,6 +478,20 @@ function HomeScreen({ onStart, onNav, plan, user, profile }) {
 }
 
 /* ═══ TEMPLATE PICKER ═══ */
+// Normalise a DB template row into the shape WorkoutScreen expects
+function normaliseTemplate(t) {
+  const exercises = (t.template_exercises || [])
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(e => ({
+      name: e.name,
+      equipment: e.equipment || "Barbell",
+      sets: e.default_sets || 3,
+      lastReps: e.default_reps || 10,
+      lastWeight: e.default_weight || 20,
+    }));
+  return { ...t, label: t.name, exercises };
+}
+
 function TemplatePicker({ onSelect, onBack }) {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -487,7 +501,7 @@ function TemplatePicker({ onSelect, onBack }) {
     const loadTemplates = async () => {
       try {
         const tpls = await getTemplates();
-        setTemplates(tpls || []);
+        setTemplates((tpls || []).map(normaliseTemplate));
       } catch (e) {
         console.error("Failed to load templates:", e);
         setTemplates([]);
@@ -500,9 +514,58 @@ function TemplatePicker({ onSelect, onBack }) {
   const pages = [];
   for (let i = 0; i < templates.length; i += 2) pages.push(templates.slice(i, i + 2));
 
-  if (loading) return <div style={{ padding: "0 20px 40px", textAlign: "center", paddingTop: 100 }}><div style={{ color: C.dim }}>Loading templates...</div></div>;
+  if (loading) return (
+    <div style={{ padding: "0 20px 40px", textAlign: "center", paddingTop: 100 }}>
+      <div style={{ color: C.dim }}>Loading templates...</div>
+    </div>
+  );
 
-  return (<div style={{ padding: "0 20px 40px" }}><div style={{ padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button></div><div style={{ textAlign: "center", padding: "20px 0 24px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Pick a Template</div></div><div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>{pages[pg]?.map(t => { const exCount = t.template_exercises?.length || 0; return (<button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "22px 20px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}><div><div style={{ fontSize: 30, marginBottom: 8 }}>{t.icon}</div><div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.label} Day</div><div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{exCount} exercises</div></div><div style={{ width: 44, height: 44, borderRadius: 14, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div></div></button>); })}</div>{pages.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{pages.map((_, i) => (<button key={i} onClick={() => setPg(i)} style={{ width: pg === i ? 24 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: pg === i ? C.accent : "rgba(255,255,255,0.1)", transition: "all .3s ease" }} />))}</div>}</div>);
+  if (templates.length === 0) return (
+    <div style={{ padding: "0 20px 40px" }}>
+      <div style={{ padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+      <div style={{ textAlign: "center", paddingTop: 60 }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 8 }}>No Templates Yet</div>
+        <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.6 }}>
+          Your workout templates will appear here.<br />
+          Make sure the database schema has been deployed.
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ padding: "0 20px 40px" }}>
+      <div style={{ padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+      <div style={{ textAlign: "center", padding: "20px 0 24px" }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Pick a Template</div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+        {pages[pg]?.map(t => (
+          <button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "22px 20px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontSize: 30, marginBottom: 8 }}>{t.icon}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.name}</div>
+                <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{t.exercises.length} exercises</div>
+              </div>
+              <div style={{ width: 44, height: 44, borderRadius: 14, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div>
+            </div>
+          </button>
+        ))}
+      </div>
+      {pages.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+          {pages.map((_, i) => (<button key={i} onClick={() => setPg(i)} style={{ width: pg === i ? 24 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: pg === i ? C.accent : "rgba(255,255,255,0.1)", transition: "all .3s ease" }} />))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ═══ WORKOUT ═══ */
