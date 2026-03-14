@@ -464,7 +464,7 @@ function AuthScreen({ onSignUp, onSignIn }) {
 
   return (
     <div style={{ padding: "40px 20px", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", textAlign: "center" }}>
-      <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", marginBottom: 8, fontFamily: C.font }}>GymTracker</div>
+      <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", marginBottom: 8, fontFamily: C.font }}>gAIns</div>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 40 }}>AI-powered strength training</div>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -925,7 +925,7 @@ function HistoryScreen({ workouts = [] }) {
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.mono }}>{Math.round((w.duration_secs || 0) / 60)}m</div>
-              <div style={{ fontSize: 11, color: C.dim }}>{((w.total_volume_kg || 0) / 1000).toFixed(1)}k kg</div>
+              <div style={{ fontSize: 11, color: C.dim }}>{(w.total_volume_kg || 0) >= 1000 ? ((w.total_volume_kg || 0) / 1000).toFixed(1) + "k" : Math.round(w.total_volume_kg || 0)} kg</div>
             </div>
           </div>
         </div>
@@ -1063,7 +1063,7 @@ function ProfileModal({ profile, plan, user, onClose, onLogout }) {
 }
 
 /* ═══ APP SHELL ═══ */
-export default function GymTracker() {
+export default function GAIns() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);

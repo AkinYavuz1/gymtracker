@@ -14,7 +14,7 @@ npm run setup            # Show setup instructions
 
 ## Architecture Overview
 
-**GymTracker** is an AI-powered gym tracking app with three layers:
+**gAIns** is an AI-powered gym tracking app with three layers:
 
 ### Frontend (React + Vite)
 - **src/App.jsx**: Single monolithic component file (~1286 lines, ~90 KB) containing all screens, state, and logic
