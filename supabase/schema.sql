@@ -13,6 +13,7 @@
 CREATE TABLE public.profiles (
     id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     name            TEXT,
+    email           TEXT,
     avatar_url      TEXT,
     gender          TEXT CHECK (gender IN ('male', 'female', 'other')),
     age             INTEGER CHECK (age BETWEEN 13 AND 100),
@@ -51,10 +52,11 @@ BEGIN
     v_user_id := NEW.id;
 
     -- Create profile with default plan
-    INSERT INTO public.profiles (id, name, avatar_url, plan, ai_queries_today, ai_queries_reset_at)
+    INSERT INTO public.profiles (id, name, email, avatar_url, plan, ai_queries_today, ai_queries_reset_at)
     VALUES (
         v_user_id,
         COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', 'Athlete'),
+        NEW.email,
         NEW.raw_user_meta_data->>'avatar_url',
         'free',  -- Default to free plan
         0,

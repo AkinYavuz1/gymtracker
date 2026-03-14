@@ -565,48 +565,24 @@ function AuthScreen({ onSignUp, onSignIn }) {
 }
 
 /* ═══ HOME ═══ */
-function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick }) {
+function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, workouts = [], prs = [], volumeTrend = [] }) {
   const [m, setM] = useState(false);
-  const [workouts, setWorkouts] = useState([]);
-  const [prs, setPRs] = useState([]);
-  const [volumeTrend, setVolumeTrend] = useState([]);
-  const [stats, setStats] = useState([{ label: "Workouts", val: "—", sub: "this week" }, { label: "Volume", val: "—", sub: "kg total" }, { label: "Streak", val: "—", sub: "days" }, { label: "Duration", val: "—", sub: "avg/week" }]);
 
-  useEffect(() => {
-    // Show UI immediately
-    setM(true);
+  useEffect(() => { setM(true); }, []);
 
-    // Load data in background
-    const loadData = async () => {
-      try {
-        const [w, p, vt] = await Promise.all([
-          getWorkouts(10),
-          getPersonalRecords(),
-          getVolumeTrend()
-        ]);
-        setWorkouts(w);
-        setPRs(p);
-        setVolumeTrend(vt || []);
+  // Calculate stats from workouts prop
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekWorkouts = workouts.filter(wo => new Date(wo.started_at) >= weekStart);
+  const totalVolume = workouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+  const avgDuration = weekWorkouts.length > 0 ? weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0) / weekWorkouts.length / 60 : 0;
 
-        // Calculate stats from workouts
-        const weekStart = new Date();
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        const weekWorkouts = w.filter(wo => new Date(wo.started_at) >= weekStart);
-        const totalVolume = w.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
-        const avgDuration = weekWorkouts.length > 0 ? weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0) / weekWorkouts.length / 60 : 0;
-
-        setStats([
-          { label: "Workouts", val: weekWorkouts.length.toString(), sub: "this week" },
-          { label: "Volume", val: totalVolume > 0 ? (totalVolume / 1000).toFixed(1) + "k" : "—", sub: "kg total" },
-          { label: "Streak", val: "—", sub: "days" },
-          { label: "Duration", val: avgDuration > 0 ? (avgDuration / 60).toFixed(1) + "h" : "—", sub: "avg/week" }
-        ]);
-      } catch (e) {
-        console.error("Failed to load home data:", e);
-      }
-    };
-    loadData();
-  }, []);
+  const stats = [
+    { label: "Workouts", val: weekWorkouts.length.toString(), sub: "this week" },
+    { label: "Volume", val: totalVolume > 0 ? (totalVolume / 1000).toFixed(1) + "k" : "—", sub: "kg total" },
+    { label: "Streak", val: "—", sub: "days" },
+    { label: "Duration", val: avgDuration > 0 ? (avgDuration / 60).toFixed(1) + "h" : "—", sub: "avg/week" }
+  ];
 
   const userName = (profile?.full_name || profile?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Athlete").split(" ")[0];
   const userInitial = userName.charAt(0).toUpperCase();
@@ -632,7 +608,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick }) {
       <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === 6 ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === 6 ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === 6 ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
       <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>↑ {volumeTrend.length > 1 ? Math.round(((volumeTrend[volumeTrend.length - 1]?.v - volumeTrend[0]?.v) / volumeTrend[0]?.v * 100 + Number.EPSILON) * 100) / 100 : 0}%</div></div><MiniChart data={volumeTrend.length > 0 ? volumeTrend : [{ w: "W1", v: 0 }]} /></div>
-      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("stats")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.weight_kg}kg</span></div></div>))}</div>
+      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.weight_kg}kg</span></div></div>))}</div>
     </div>
   );
 }
@@ -653,8 +629,8 @@ function normaliseTemplate(t) {
 }
 
 function TemplatePicker({ onSelect, onBack }) {
-  const [templates, setTemplates] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [templates, setTemplates] = useState(TEMPLATES);
+  const [loading, setLoading] = useState(false);
   const [pg, setPg] = useState(0);
 
   useEffect(() => {
@@ -666,23 +642,16 @@ function TemplatePicker({ onSelect, onBack }) {
           const seen = new Set();
           const unique = tpls.filter(t => seen.has(t.name) ? false : seen.add(t.name));
           setTemplates(unique.map(normaliseTemplate));
-        } else {
-          // Fall back to built-in templates if DB returned nothing
-          setTemplates(TEMPLATES);
         }
       } catch (e) {
         console.error("Failed to load templates:", e);
-        setTemplates(TEMPLATES);
       }
-      setLoading(false);
     };
-    // Timeout safety — never stay stuck on "Loading..."
-    const timeout = setTimeout(() => setLoading(false), 8000);
-    loadTemplates().finally(() => clearTimeout(timeout));
+    loadTemplates();
   }, []);
 
   const pages = [];
-  for (let i = 0; i < templates.length; i += 2) pages.push(templates.slice(i, i + 2));
+  for (let i = 0; i < templates.length; i += 4) pages.push(templates.slice(i, i + 4));
 
   if (loading) return (
     <div style={{ padding: "0 20px 40px", textAlign: "center", paddingTop: 100 }}>
@@ -711,20 +680,20 @@ function TemplatePicker({ onSelect, onBack }) {
       <div style={{ padding: "14px 0 6px" }}>
         <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
       </div>
-      <div style={{ textAlign: "center", padding: "20px 0 24px" }}>
+      <div style={{ textAlign: "center", padding: "12px 0 16px" }}>
         <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Pick a Template</div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
         {pages[pg]?.map(t => (
-          <button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "22px 20px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}>
+          <button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "14px 16px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <div style={{ fontSize: 30, marginBottom: 8 }}>{t.icon}</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.name}</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{t.icon}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.label || t.name}</div>
                 <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{t.exercises.length} exercises</div>
               </div>
-              <div style={{ width: 44, height: 44, borderRadius: 14, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div>
+              <div style={{ width: 36, height: 36, borderRadius: 12, background: `${t.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: t.color }}>→</div>
             </div>
           </button>
         ))}
@@ -739,7 +708,7 @@ function TemplatePicker({ onSelect, onBack }) {
 }
 
 /* ═══ WORKOUT ═══ */
-function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
+function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
   const [timer, setTimer] = useState(0);
   const [exs, setExs] = useState(() => template.exercises.map(e => ({ ...e, setsData: Array.from({ length: e.sets }, () => ({ weight: e.lastWeight, reps: e.lastReps, done: false })) })));
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
@@ -755,67 +724,83 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
 
   const saveWorkout = async () => {
     setSaving(true);
-    try {
-      // Calculate total volume from completed sets
-      let totalVolume = 0;
-      const completedSets = [];
-      exs.forEach(ex => {
-        ex.setsData.forEach((set, si) => {
-          if (set.done) {
-            totalVolume += set.weight * set.reps;
-            completedSets.push({
-              exercise_name: ex.name,
-              set_number: si + 1,
-              weight_kg: set.weight,
-              reps: set.reps,
-              completed: true,
-              rpe: 5
-            });
-          }
-        });
-      });
 
-      const workoutData = {
-        title: template.label + " Day",
-        started_at: new Date(Date.now() - timer * 1000).toISOString(),
-        finished_at: new Date().toISOString(),
-        duration_secs: timer,
-        total_volume_kg: totalVolume,
-        notes: ""
+    let totalVolume = 0;
+    const completedSets = [];
+    exs.forEach(ex => {
+      ex.setsData.forEach((set, si) => {
+        if (set.done) {
+          totalVolume += set.weight * set.reps;
+          completedSets.push({
+            exercise_name: ex.name,
+            set_number: si + 1,
+            weight_kg: set.weight,
+            reps: set.reps,
+            completed: true,
+            rpe: 5
+          });
+        }
+      });
+    });
+
+    const workoutData = {
+      title: (template.label || template.name || "Workout") + (template.label?.endsWith("Day") || template.name?.endsWith("Day") ? "" : " Day"),
+      started_at: new Date(Date.now() - timer * 1000).toISOString(),
+      finished_at: new Date().toISOString(),
+      duration_secs: timer,
+      total_volume_kg: totalVolume,
+      notes: ""
+    };
+
+    // Fall back to offline queue if no user, no connection, or save times out
+    const saveOffline = () => { queueWorkout(workoutData, completedSets); };
+
+    if (!isOnline || !user) {
+      saveOffline();
+      onFinish();
+      setSaving(false);
+      return;
+    }
+
+    try {
+      // Refresh auth token before saving (getUser verifies JWT with server)
+      const freshUser = await getUser();
+      const userId = freshUser?.id || user.id;
+
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), 20000)
+      );
+
+      const save = async () => {
+        const { data: workout, error: workoutError } = await supabase
+          .from("workouts")
+          .insert({ ...workoutData, user_id: userId })
+          .select()
+          .single();
+
+        if (workoutError) throw workoutError;
+
+        if (completedSets.length > 0) {
+          const { error: setsError } = await supabase
+            .from("workout_sets")
+            .insert(completedSets.map(s => ({ ...s, workout_id: workout.id })));
+          if (setsError) console.error("Error saving sets:", setsError);
+        }
       };
 
-      if (!isOnline) {
-        // Save to offline queue
-        queueWorkout(workoutData, completedSets);
-        onFinish();
-        return;
-      }
-
-      // Online — save directly to database
-      const user = await getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: workout, error: workoutError } = await supabase
-        .from("workouts")
-        .insert({ ...workoutData, user_id: user.id })
-        .select()
-        .single();
-
-      if (workoutError) throw workoutError;
-
-      if (completedSets.length > 0) {
-        const { error: setsError } = await supabase
-          .from("workout_sets")
-          .insert(completedSets.map(s => ({ ...s, workout_id: workout.id })));
-        if (setsError) console.error("Error saving sets:", setsError);
-      }
-
-      onFinish();
+      await Promise.race([save(), timeout]);
     } catch (e) {
       console.error("Error saving workout:", e);
-      alert("Failed to save workout: " + (e.message || "Unknown error"));
+      saveOffline();
+      if (e.message === "timeout") {
+        alert("Supabase didn't respond in 20s — workout saved locally. Check that your Supabase project is active (free-tier projects pause after inactivity).");
+      } else if (navigator.onLine) {
+        alert("Failed to save to database (saved locally): " + (e.message || e.details || "Unknown error"));
+      }
     }
+
     setSaving(false);
+    onFinish();
   };
 
   return (
@@ -850,30 +835,10 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true }) {
 }
 
 /* ═══ STATS ═══ */
-function StatsScreen() {
+function StatsScreen({ workouts = [], prs = [], volumeTrend = [] }) {
   const [m, setM] = useState(false);
-  const [volumeTrend, setVolumeTrend] = useState([]);
-  const [workouts, setWorkouts] = useState([]);
-  const [prs, setPRs] = useState([]);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      try {
-        const [vt, w, p] = await Promise.all([
-          getVolumeTrend(),
-          getWorkouts(100),
-          getPersonalRecords()
-        ]);
-        setVolumeTrend(vt || []);
-        setWorkouts(w || []);
-        setPRs(p || []);
-      } catch (e) {
-        console.error("Failed to load stats:", e);
-      }
-      setM(true);
-    };
-    loadStats();
-  }, []);
+  useEffect(() => { setM(true); }, []);
 
   // Calculate muscle split from workouts
   const muscleCounts = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0 };
@@ -928,22 +893,10 @@ function StatsScreen() {
 }
 
 /* ═══ HISTORY ═══ */
-function HistoryScreen() {
+function HistoryScreen({ workouts = [] }) {
   const [m, setM] = useState(false);
-  const [workouts, setWorkouts] = useState([]);
 
-  useEffect(() => {
-    const loadWorkouts = async () => {
-      try {
-        const w = await getWorkouts(20);
-        setWorkouts(w || []);
-      } catch (e) {
-        console.error("Failed to load workouts:", e);
-      }
-      setM(true);
-    };
-    loadWorkouts();
-  }, []);
+  useEffect(() => { setM(true); }, []);
 
   const colors = ["#DFFF3C", "#3CFFF0", "#FF6B3C", "#B47CFF", "#47B8FF"];
 
@@ -953,6 +906,13 @@ function HistoryScreen() {
         <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Log</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>History</div>
       </div>
+      {workouts.length === 0 && (
+        <div style={{ textAlign: "center", paddingTop: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No Workouts Yet</div>
+          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete a workout and it will appear here.</div>
+        </div>
+      )}
       {workouts.map((w, i) => (
         <div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -966,6 +926,51 @@ function HistoryScreen() {
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.mono }}>{Math.round((w.duration_secs || 0) / 60)}m</div>
               <div style={{ fontSize: 11, color: C.dim }}>{((w.total_volume_kg || 0) / 1000).toFixed(1)}k kg</div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══ PERSONAL RECORDS ═══ */
+function PRScreen({ onBack, prs = [] }) {
+  const [m, setM] = useState(false);
+
+  useEffect(() => { setM(true); }, []);
+
+  const colors = ["#DFFF3C", "#3CFFF0", "#FF6B3C", "#B47CFF", "#47B8FF"];
+
+  return (
+    <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
+      <div style={{ padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+      <div style={{ padding: "8px 0 18px" }}>
+        <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Lifting</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Personal Records</div>
+      </div>
+      {prs.length === 0 && (
+        <div style={{ textAlign: "center", paddingTop: 40 }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🏋️</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No PRs Yet</div>
+          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete workouts to start tracking your personal records.</div>
+        </div>
+      )}
+      {prs.map((p, i) => (
+        <div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 10, height: 10, borderRadius: 5, background: colors[i % colors.length] }} />
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{p.exercise_name}</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{p.reps} reps @ {p.weight_kg}kg</div>
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{p.weight_kg}kg</div>
+              {p.estimated_1rm && <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>e1RM: {Math.round(p.estimated_1rm)}kg</div>}
             </div>
           </div>
         </div>
@@ -1071,7 +1076,21 @@ export default function GymTracker() {
   const [tpl, setTpl] = useState(null);
   const [plan, setPlan] = useState("free");
   const [queriesUsed, setQueriesUsed] = useState(0);
+  const [appWorkouts, setAppWorkouts] = useState([]);
+  const [appPRs, setAppPRs] = useState([]);
+  const [appVolumeTrend, setAppVolumeTrend] = useState([]);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const scrollRef = useRef(null);
+
+  // Shared data loader — called explicitly after auth is confirmed
+  const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
+
+  const refreshAppData = async () => {
+    try { const w = await withTimeout(getWorkouts(100), 10000); setAppWorkouts(w || []); } catch (e) { console.error("Failed to load workouts:", e); }
+    try { const p = await withTimeout(getPersonalRecords(), 10000); setAppPRs(p || []); } catch (e) { console.error("Failed to load PRs:", e); }
+    try { const vt = await withTimeout(getVolumeTrend(), 10000); setAppVolumeTrend(vt || []); } catch (e) { console.error("Failed to load volume trend:", e); }
+    setDataLoaded(true);
+  };
 
   // Auth listener
   useEffect(() => {
@@ -1082,13 +1101,21 @@ export default function GymTracker() {
       try {
         const session = await getSession();
         if (session?.user) {
-          setUser(session.user);
           try {
             const prof = await getProfile();
-            setProfile(prof);
-            if (prof?.plan) setPlan(prof.plan);
+            if (!prof) {
+              // Session exists but no profile — account was deleted, sign out
+              await signOut();
+            } else {
+              setUser(session.user);
+              setProfile(prof);
+              if (prof.plan) setPlan(prof.plan);
+              // JWT is fresh from getProfile() → getUser(), load data now
+              refreshAppData();
+            }
           } catch {
-            // Profile fetch failed — still let user in
+            // Profile fetch failed due to network — still let user in
+            setUser(session.user);
           }
         }
       } catch {
@@ -1104,16 +1131,10 @@ export default function GymTracker() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        try {
-          const prof = await getProfile();
-          setProfile(prof);
-          if (prof?.plan) setPlan(prof.plan);
-        } catch { /* ignore */ }
-
-        // Seed dummy data for new users
-        if (event === 'SIGNED_IN') {
-          seedDummyData(); // fire and forget
-        }
+        // Don't call getProfile/refreshAppData here — checkAuth and refreshAuth
+        // handle it explicitly after confirming the JWT is fresh.
+        // Calling getProfile here races with those flows and causes token refresh conflicts.
+        if (event === 'SIGNED_IN') seedDummyData();
       } else {
         setUser(null);
         setProfile(null);
@@ -1124,18 +1145,28 @@ export default function GymTracker() {
   }, []);
 
   // Online/offline detection + auto-sync
+  const syncOfflineWorkouts = async () => {
+    const pending = getPendingCount();
+    if (pending > 0 && navigator.onLine) {
+      setSyncing(true);
+      try {
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("sync timeout")), 15000));
+        const { synced } = await Promise.race([syncPendingWorkouts(), timeout]);
+        if (synced > 0) setDataLoaded(false);
+      } catch (e) {
+        console.error("Sync failed:", e);
+      }
+      setPendingSync(getPendingCount());
+      setSyncing(false);
+    }
+  };
+
   useEffect(() => {
     setPendingSync(getPendingCount());
 
-    const handleOnline = async () => {
+    const handleOnline = () => {
       setIsOnline(true);
-      const pending = getPendingCount();
-      if (pending > 0) {
-        setSyncing(true);
-        const { synced } = await syncPendingWorkouts();
-        if (synced > 0) setPendingSync(getPendingCount());
-        setSyncing(false);
-      }
+      syncOfflineWorkouts();
     };
 
     const handleOffline = () => {
@@ -1150,11 +1181,23 @@ export default function GymTracker() {
     };
   }, []);
 
+  // Sync pending workouts on load when online and authenticated
+  useEffect(() => {
+    if (user && !authLoading) syncOfflineWorkouts();
+  }, [user, authLoading]);
+
+  // No useEffect for data loading — refreshAppData is called explicitly
+  // from checkAuth (page load) and refreshAuth (sign-in) after JWT is confirmed fresh.
+
   const handleLogout = async () => {
-    await signOut();
     setUser(null);
     setProfile(null);
     setScreen("home");
+    setDataLoaded(false);
+    setAppWorkouts([]);
+    setAppPRs([]);
+    setAppVolumeTrend([]);
+    try { await signOut(); } catch (e) { console.error("Sign out error:", e); }
   };
 
   const needsOnboarding = user && profile && profile.onboarding_complete === false;
@@ -1189,6 +1232,9 @@ export default function GymTracker() {
         const prof = await getProfile();
         setProfile(prof);
         if (prof?.plan) setPlan(prof.plan);
+        // Profile is set and JWT is fresh — load data explicitly
+        // rather than relying on useEffect timing
+        refreshAppData();
       }
     };
 
@@ -1234,15 +1280,16 @@ export default function GymTracker() {
       )}
 
       <div ref={scrollRef} style={{ height: "calc(100% - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} />}
+        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); setScreen("workout"); setTab(null); }} onBack={() => nav("home")} />}
-        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} onFinish={() => { setPendingSync(getPendingCount()); nav("home"); }} onBack={() => nav("home")} />}
+        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={() => { setPendingSync(getPendingCount()); refreshAppData(); nav("home"); }} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => setScreen("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
-        {screen === "history" && <HistoryScreen />}
-        {screen === "stats" && <StatsScreen />}
+        {screen === "history" && <HistoryScreen workouts={appWorkouts} />}
+        {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
       </div>
-      {!["workout", "pricing"].includes(screen) && (
+      {!["workout", "pricing", "prs"].includes(screen) && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 72, background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "center", paddingBottom: 8 }}>
           {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 16px" }}><span style={{ fontSize: 20, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>

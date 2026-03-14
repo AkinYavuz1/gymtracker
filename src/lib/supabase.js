@@ -144,19 +144,21 @@ export async function getTemplates() {
 }
 
 export async function getWorkouts(limit = 10) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('workouts')
     .select('*')
     .order('started_at', { ascending: false })
     .limit(limit);
+  if (error) console.error('getWorkouts error:', error);
   return data || [];
 }
 
 export async function getPersonalRecords() {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('personal_records')
     .select('*')
     .order('estimated_1rm', { ascending: false });
+  if (error) console.error('getPersonalRecords error:', error);
   return data || [];
 }
 
