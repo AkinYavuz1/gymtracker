@@ -17,8 +17,11 @@ npm run setup            # Show setup instructions
 **GymTracker** is an AI-powered gym tracking app with three layers:
 
 ### Frontend (React + Vite)
-- **src/App.jsx**: Single monolithic component file (~785 lines) containing all screens, state, and logic
-- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls
+- **src/App.jsx**: Single monolithic component file (~1286 lines, ~90 KB) containing all screens, state, and logic
+- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (294 lines)
+- **src/lib/exerciseGifs.js**: Exercise GIF/animation data (93 lines)
+- **src/lib/offlineStorage.js**: Offline caching helpers (87 lines)
+- **src/components/**, **src/screens/**: Component directories (currently empty — reserved for future splits)
 - **src/main.jsx**: React entry point
 - **Styling**: Tailwind CSS + inline styles with consistent theme colors (defined as object `C`)
 
@@ -148,9 +151,25 @@ No formal test suite configured. For manual testing:
 - Use browser DevTools to debug API responses
 - Test auth flows (login, signup, Google/Apple if configured)
 
+## APK Build (Android)
+
+Uses Capacitor 8. Steps:
+```bash
+npm run build              # Build web assets
+npx cap sync android       # Sync to Android project
+cd android && ./gradlew assembleDebug   # Build APK → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Known issue — Java version mismatch:**
+Capacitor 8 requires Java 21 but system has Java 17. Fix by patching these two files to use `VERSION_17`:
+- `android/app/capacitor.build.gradle` (auto-regenerated on `npx cap sync` — re-patch each time)
+- `android/capacitor-cordova-android-plugins/build.gradle`
+
 ## File Size Reference
 
-- `src/App.jsx`: ~54 KB (large monolith; consider splitting if adding major features)
+- `src/App.jsx`: ~90 KB / ~1286 lines (large monolith; consider splitting if adding major features)
+- `src/lib/supabase.js`: 294 lines
+- `src/lib/exerciseGifs.js`: 93 lines
+- `src/lib/offlineStorage.js`: 87 lines
 - `supabase/functions/coach/index.ts`: 219 lines
 - `supabase/schema.sql`: 429 lines
-- `src/lib/supabase.js`: 164 lines

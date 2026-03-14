@@ -565,7 +565,7 @@ function AuthScreen({ onSignUp, onSignIn }) {
 }
 
 /* ═══ HOME ═══ */
-function HomeScreen({ onStart, onNav, plan, user, profile }) {
+function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick }) {
   const [m, setM] = useState(false);
   const [workouts, setWorkouts] = useState([]);
   const [prs, setPRs] = useState([]);
@@ -608,7 +608,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile }) {
     loadData();
   }, []);
 
-  const userName = profile?.full_name ? profile.full_name.split(" ")[0] : "User";
+  const userName = (profile?.full_name || profile?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Athlete").split(" ")[0];
   const userInitial = userName.charAt(0).toUpperCase();
   const wd = [true, true, false, true, true, false, false];
   return (
@@ -617,7 +617,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile }) {
         <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Good evening</div></div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {plan !== "free" && <span style={{ padding: "3px 8px", borderRadius: 6, background: `${PLANS[plan].color}20`, color: PLANS[plan].color, fontSize: 9, fontWeight: 800, fontFamily: C.mono }}>{PLANS[plan].badge}</span>}
-          <div style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font }}>{userInitial}</div>
+          <button onClick={onProfileClick} style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font, border: "none", cursor: "pointer", padding: 0 }}>{userInitial}</button>
         </div>
       </div>
       <button onClick={onStart} style={{ width: "100%", padding: "20px 22px", border: "none", borderRadius: 22, background: `linear-gradient(135deg, ${C.accent} 0%, #C8E030 100%)`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", overflow: "hidden" }}>
@@ -1208,26 +1208,6 @@ export default function GymTracker() {
     <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
       <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; } @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 28px 0", color: "#fff", fontSize: 13, fontWeight: 600 }}>
-        <span style={{ fontFamily: C.mono }}>{profile?.full_name || "User"}</span>
-        <button
-          onClick={() => setProfileModalOpen(true)}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#fff",
-            cursor: "pointer",
-            fontSize: 20,
-            fontWeight: 600,
-            fontFamily: C.font,
-            padding: "4px 8px",
-            opacity: 0.8,
-            transition: "opacity 0.2s"
-          }}
-        >
-          ⚙️
-        </button>
-      </div>
       {/* Offline / syncing banner */}
       {(!isOnline || syncing || pendingSync > 0) && (
         <div style={{
@@ -1253,8 +1233,8 @@ export default function GymTracker() {
         </div>
       )}
 
-      <div ref={scrollRef} style={{ height: "calc(100% - 40px - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} />}
+      <div ref={scrollRef} style={{ height: "calc(100% - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
+        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); setScreen("workout"); setTab(null); }} onBack={() => nav("home")} />}
         {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} onFinish={() => { setPendingSync(getPendingCount()); nav("home"); }} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => setScreen("pricing")} />}
