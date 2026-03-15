@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getUser, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
 
@@ -802,9 +802,9 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
     }
 
     try {
-      // Refresh auth token before saving (getUser verifies JWT with server)
-      const freshUser = await getUser();
-      const userId = freshUser?.id || user.id;
+      // Use cached session (auto-refreshes) instead of getUser() which can 403
+      const session = await getSession();
+      const userId = session?.user?.id || user.id;
 
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 20000)
@@ -1149,7 +1149,7 @@ export default function GAIns() {
               setUser(session.user);
               setProfile(prof);
               if (prof.plan) setPlan(prof.plan);
-              // JWT is fresh from getProfile() → getUser(), load data now
+              // Session is fresh, load data now
               refreshAppData();
             }
           } catch {
@@ -1170,11 +1170,9 @@ export default function GAIns() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        // Don't call getProfile/refreshAppData here — checkAuth and refreshAuth
-        // handle it explicitly after confirming the JWT is fresh.
-        // Calling getProfile here races with those flows and causes token refresh conflicts.
         if (event === 'SIGNED_IN') seedDummyData();
-      } else {
+      } else if (event === 'SIGNED_OUT') {
+        // Only clear user on explicit sign-out, not transient token failures
         setUser(null);
         setProfile(null);
       }

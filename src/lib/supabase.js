@@ -98,23 +98,23 @@ export async function callCoachAPI(prompt, label, conversationId) {
 // ─── Data helpers ───────────────────────────────────────────
 
 export async function getProfile() {
-  const user = await getUser();
-  if (!user) return null;
+  const session = await getSession();
+  if (!session?.user) return null;
   const { data } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user.id)
+    .eq('id', session.user.id)
     .single();
   return data;
 }
 
 export async function updateProfile(updates) {
-  const user = await getUser();
-  if (!user) return null;
+  const session = await getSession();
+  if (!session?.user) return null;
   const { data, error } = await supabase
     .from('profiles')
     .update(updates)
-    .eq('id', user.id)
+    .eq('id', session.user.id)
     .select()
     .single();
   return { data, error };
@@ -129,9 +129,9 @@ export async function getTemplates() {
   // If no templates exist (e.g. DB trigger didn't fire for OAuth user),
   // seed them now via the RPC and retry once
   if (!data || data.length === 0) {
-    const user = await getUser();
-    if (user) {
-      await supabase.rpc('seed_default_templates', { p_user_id: user.id });
+    const session = await getSession();
+    if (session?.user) {
+      await supabase.rpc('seed_default_templates', { p_user_id: session.user.id });
       const { data: retried } = await supabase
         .from('templates')
         .select('*, template_exercises(*)')
@@ -163,35 +163,36 @@ export async function getPersonalRecords() {
 }
 
 export async function getWeeklyStats() {
-  const user = await getUser();
-  if (!user) return null;
+  const session = await getSession();
+  if (!session?.user) return null;
   const { data } = await supabase.rpc('get_weekly_stats', {
-    p_user_id: user.id,
+    p_user_id: session.user.id,
   });
   return data;
 }
 
 export async function getVolumeTrend() {
-  const user = await getUser();
-  if (!user) return null;
+  const session = await getSession();
+  if (!session?.user) return null;
   const { data } = await supabase.rpc('get_volume_trend', {
-    p_user_id: user.id,
+    p_user_id: session.user.id,
   });
   return data;
 }
 
 export async function checkAIQuota() {
-  const user = await getUser();
-  if (!user) return null;
+  const session = await getSession();
+  if (!session?.user) return null;
   const { data } = await supabase.rpc('check_ai_quota', {
-    p_user_id: user.id,
+    p_user_id: session.user.id,
   });
   return data;
 }
 
 export async function seedDummyData() {
-  const user = await getUser();
-  if (!user) return;
+  const session = await getSession();
+  if (!session?.user) return;
+  const user = session.user;
 
   try {
     // Check if user already has workouts (quick check)
