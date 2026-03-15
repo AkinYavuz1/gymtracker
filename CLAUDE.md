@@ -9,6 +9,9 @@ npm run dev              # Start Vite dev server (http://localhost:3000)
 npm run build            # Production build to dist/
 npm run functions:deploy # Deploy Edge Functions (coach + stripe-webhook)
 npm run db:push          # Push schema changes (if linked to Supabase)
+npm run test             # Run Vitest test suite (191 tests)
+npm run test:watch       # Run tests in watch mode
+npm run test:coverage    # Run tests with coverage report
 npm run setup            # Show setup instructions
 ```
 
