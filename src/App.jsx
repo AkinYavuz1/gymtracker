@@ -36,6 +36,10 @@ const C = { accent: "#DFFF3C", bg: "#08080A", ai: "#A47BFF", card: "rgba(255,255
 
 /* ═══ COMPONENTS ═══ */
 function MiniChart({ data, color = C.accent, h = 48 }) {
+  if (!data || data.length === 0) return null;
+  if (data.length === 1) {
+    return (<svg viewBox="0 0 100 100" style={{ width: "100%", height: h }} preserveAspectRatio="none"><line x1="0" y1="50" x2="100" y2="50" stroke={color} strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" /><circle cx="50" cy="50" r="4" fill={color} vectorEffect="non-scaling-stroke" /></svg>);
+  }
   const max = Math.max(...data.map(d => d.v)), min = Math.min(...data.map(d => d.v)), rng = max - min || 1, s = 100 / (data.length - 1);
   const pts = data.map((d, i) => `${i * s},${100 - ((d.v - min) / rng) * 75 - 12}`).join(" ");
   return (<svg viewBox="0 0 100 100" style={{ width: "100%", height: h }} preserveAspectRatio="none"><defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity=".25" /><stop offset="100%" stopColor={color} stopOpacity="0" /></linearGradient></defs><polygon points={`${pts} ${(data.length - 1) * s},100 0,100`} fill="url(#cg)" /><polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /><circle cx={(data.length - 1) * s} cy={100 - ((data[data.length - 1].v - min) / rng) * 75 - 12} r="4" fill={color} vectorEffect="non-scaling-stroke" /></svg>);
@@ -573,24 +577,60 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
   // Calculate stats from workouts prop
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  weekStart.setHours(0, 0, 0, 0);
   const weekWorkouts = workouts.filter(wo => new Date(wo.started_at) >= weekStart);
-  const totalVolume = workouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
-  const avgDuration = weekWorkouts.length > 0 ? weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0) / weekWorkouts.length / 60 : 0;
+  const totalVolume = weekWorkouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+  const avgDurationMins = weekWorkouts.length > 0 ? weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0) / weekWorkouts.length / 60 : 0;
+
+  // Streak: count consecutive days with workouts going backwards from today
+  const streak = (() => {
+    if (workouts.length === 0) return 0;
+    const daySet = new Set(workouts.map(wo => new Date(wo.started_at).toDateString()));
+    let count = 0;
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    // If no workout today, start checking from yesterday
+    if (!daySet.has(d.toDateString())) d.setDate(d.getDate() - 1);
+    while (daySet.has(d.toDateString())) {
+      count++;
+      d.setDate(d.getDate() - 1);
+    }
+    return count;
+  })();
+
+  const volumeStr = totalVolume > 0
+    ? (totalVolume >= 1000 ? (totalVolume / 1000).toFixed(1) + "k" : Math.round(totalVolume)) + " kg"
+    : "—";
+
+  // Format duration: show minutes or hours
+  const durationStr = avgDurationMins > 0
+    ? (avgDurationMins >= 60 ? (avgDurationMins / 60).toFixed(1) + "h" : Math.round(avgDurationMins) + "m")
+    : "—";
+
+  // Map volume trend from DB format {week_start, volume} to MiniChart format {w, v}
+  const chartData = volumeTrend.length > 0
+    ? volumeTrend.map((t, i) => ({ w: t.w || `W${i + 1}`, v: t.v || t.volume || 0 }))
+    : [{ w: "W1", v: 0 }];
 
   const stats = [
     { label: "Workouts", val: weekWorkouts.length.toString(), sub: "this week" },
-    { label: "Volume", val: totalVolume > 0 ? (totalVolume / 1000).toFixed(1) + "k" : "—", sub: "kg total" },
-    { label: "Streak", val: "—", sub: "days" },
-    { label: "Duration", val: avgDuration > 0 ? (avgDuration / 60).toFixed(1) + "h" : "—", sub: "avg/week" }
+    { label: "Volume", val: volumeStr, sub: "this week" },
+    { label: "Streak", val: streak.toString(), sub: "days" },
+    { label: "Duration", val: durationStr, sub: "avg/session" }
   ];
 
   const userName = (profile?.full_name || profile?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Athlete").split(" ")[0];
   const userInitial = userName.charAt(0).toUpperCase();
-  const wd = [true, true, false, true, true, false, false];
+  const wd = Array(7).fill(false);
+  weekWorkouts.forEach(wo => {
+    const day = new Date(wo.started_at).getDay();
+    wd[day === 0 ? 6 : day - 1] = true;
+  });
+  const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })();
   return (
     <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transform: m ? "none" : "translateY(10px)", transition: "all .5s cubic-bezier(.22,1,.36,1)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 18px" }}>
-        <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Good evening</div></div>
+        <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>{(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}</div></div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {plan !== "free" && <span style={{ padding: "3px 8px", borderRadius: 6, background: `${PLANS[plan].color}20`, color: PLANS[plan].color, fontSize: 9, fontWeight: 800, fontFamily: C.mono }}>{PLANS[plan].badge}</span>}
           <button onClick={onProfileClick} style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font, border: "none", cursor: "pointer", padding: 0 }}>{userInitial}</button>
@@ -605,10 +645,10 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
         <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Ask AI Coach</div><div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Powered by Haiku · {PLANS[plan].queries === 999 ? "Unlimited" : `${PLANS[plan].queries}/day`}</div></div>
         <div style={{ color: C.ai, fontSize: 16 }}>→</div>
       </button>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === 6 ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === 6 ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === 6 ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === todayIdx ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === todayIdx ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === todayIdx ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
-      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>↑ {volumeTrend.length > 1 ? Math.round(((volumeTrend[volumeTrend.length - 1]?.v - volumeTrend[0]?.v) / volumeTrend[0]?.v * 100 + Number.EPSILON) * 100) / 100 : 0}%</div></div><MiniChart data={volumeTrend.length > 0 ? volumeTrend : [{ w: "W1", v: 0 }]} /></div>
-      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.weight_kg}kg</span></div></div>))}</div>
+      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{chartData.length > 1 && chartData[0].v > 0 ? ((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100 >= 0 ? "↑" : "↓") + " " + Math.abs(Math.round((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100)) + "%" : ""}</div></div><MiniChart data={chartData} /></div>
+      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</span><span style={{ fontSize: 12, color: C.dim }}>1RM</span></div></div>))}</div>
     </div>
   );
 }
@@ -632,7 +672,6 @@ function TemplatePicker({ onSelect, onBack }) {
   const [templates, setTemplates] = useState(TEMPLATES);
   const [loading, setLoading] = useState(false);
   const [pg, setPg] = useState(0);
-
   useEffect(() => {
     const loadTemplates = async () => {
       try {
@@ -662,7 +701,7 @@ function TemplatePicker({ onSelect, onBack }) {
   if (templates.length === 0) return (
     <div style={{ padding: "0 20px 40px" }}>
       <div style={{ padding: "14px 0 6px" }}>
-        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+        <button onClick={() => onBack()} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
       </div>
       <div style={{ textAlign: "center", paddingTop: 60 }}>
         <div style={{ fontSize: 40, marginBottom: 16 }}>📋</div>
@@ -678,7 +717,7 @@ function TemplatePicker({ onSelect, onBack }) {
   return (
     <div style={{ padding: "0 20px 40px" }}>
       <div style={{ padding: "14px 0 6px" }}>
-        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+        <button onClick={() => onBack()} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
       </div>
       <div style={{ textAlign: "center", padding: "12px 0 16px" }}>
         <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Choose workout</div>
@@ -1189,10 +1228,27 @@ export default function GAIns() {
   // No useEffect for data loading — refreshAppData is called explicitly
   // from checkAuth (page load) and refreshAuth (sign-in) after JWT is confirmed fresh.
 
+  // Seed initial history state & listen for back button
+  useEffect(() => {
+    window.history.replaceState({ screen: screen }, "");
+    let skipNext = false;
+    const onPopState = (e) => {
+      if (skipNext) { skipNext = false; return; }
+      const s = e.state?.screen;
+      if (!s) return; // ignore popstate events without our state
+      setTab(["home","coach","history","stats"].includes(s) ? s : null);
+      setScreen(s);
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
   const handleLogout = async () => {
     setUser(null);
     setProfile(null);
     setScreen("home");
+    window.history.replaceState({ screen: "home" }, "");
     setDataLoaded(false);
     setAppWorkouts([]);
     setAppPRs([]);
@@ -1205,7 +1261,11 @@ export default function GAIns() {
   // Show loading or auth screen
   if (authLoading) {
     return (
-      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div className="app-shell" style={{ background: C.bg, overflow: "hidden", fontFamily: C.font, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <style>{`
+          .app-shell { width: 100vw; height: 100dvh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+          @media (min-width: 500px) { .app-shell { width: 390px; height: 844px; margin: 20px auto; border-radius: 44px; box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); padding-top: 0; padding-bottom: 0; } }
+        `}</style>
         <div style={{ fontSize: 13, color: C.dim }}>Loading...</div>
       </div>
     );
@@ -1213,9 +1273,13 @@ export default function GAIns() {
 
   if (needsOnboarding) {
     return (
-      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+      <div className="app-shell" style={{ background: C.bg, overflow: "hidden", fontFamily: C.font, position: "relative" }}>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-        <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }`}</style>
+        <style>{`
+          * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }
+          .app-shell { width: 100vw; height: 100dvh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+          @media (min-width: 500px) { .app-shell { width: 390px; height: 844px; margin: 20px auto; border-radius: 44px; box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); padding-top: 0; padding-bottom: 0; } }
+        `}</style>
         <OnboardingScreen user={user} onComplete={async () => {
           const prof = await getProfile();
           setProfile(prof);
@@ -1239,21 +1303,49 @@ export default function GAIns() {
     };
 
     return (
-      <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+      <div className="app-shell" style={{ background: C.bg, overflow: "hidden", fontFamily: C.font, position: "relative" }}>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-        <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }`}</style>
+        <style>{`
+          * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; }
+          .app-shell { width: 100vw; height: 100dvh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+          @media (min-width: 500px) { .app-shell { width: 390px; height: 844px; margin: 20px auto; border-radius: 44px; box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); padding-top: 0; padding-bottom: 0; } }
+        `}</style>
         <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} />
       </div>
     );
   }
 
-  const nav = (t) => { setTab(t); setScreen(t); if (scrollRef.current) scrollRef.current.scrollTop = 0; };
+  const nav = (t, replace) => {
+    setTab(["home","coach","history","stats"].includes(t) ? t : null);
+    setScreen(t);
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    if (replace) window.history.replaceState({ screen: t }, "");
+    else window.history.pushState({ screen: t }, "");
+  };
+
   const tabs = [{ id: "home", icon: "⌂", label: "Home" }, { id: "coach", icon: "🧠", label: "Coach" }, { id: "history", icon: "☰", label: "History" }, { id: "stats", icon: "◈", label: "Stats" }];
 
   return (
-    <div style={{ width: 390, height: 844, margin: "20px auto", background: C.bg, borderRadius: 44, overflow: "hidden", fontFamily: C.font, position: "relative", boxShadow: "0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06)" }}>
+    <div className="app-shell" style={{ background: C.bg, overflow: "hidden", fontFamily: C.font, position: "relative", display: "flex", flexDirection: "column" }}>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      <style>{`* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; } ::-webkit-scrollbar { display: none; } @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
+      <style>{`
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        ::-webkit-scrollbar { display: none; }
+        @keyframes pulse { 0%, 100% { opacity: 0.3; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }
+        .app-shell {
+          width: 100vw; height: 100dvh;
+          padding-top: env(safe-area-inset-top, 0px);
+          padding-bottom: env(safe-area-inset-bottom, 0px);
+        }
+        @media (min-width: 500px) {
+          .app-shell {
+            width: 390px; height: 844px; margin: 20px auto;
+            border-radius: 44px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+            padding-top: 0; padding-bottom: 0;
+          }
+        }
+      `}</style>
       {/* Offline / syncing banner */}
       {(!isOnline || syncing || pendingSync > 0) && (
         <div style={{
@@ -1279,22 +1371,22 @@ export default function GAIns() {
         </div>
       )}
 
-      <div ref={scrollRef} style={{ height: "calc(100% - 72px)", overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => setScreen("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
-        {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); setScreen("workout"); setTab(null); }} onBack={() => nav("home")} />}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
+        {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); nav("workout"); }} onBack={() => nav("home")} />}
         {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={() => { setPendingSync(getPendingCount()); refreshAppData(); nav("home"); }} onBack={() => nav("home")} />}
-        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => setScreen("pricing")} />}
+        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
         {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
       </div>
       {!["workout", "pricing", "prs"].includes(screen) && (
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 72, background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "center", paddingBottom: 8 }}>
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "calc(72px + env(safe-area-inset-bottom, 0px))", background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "flex-start", paddingTop: 10 }}>
           {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 16px" }}><span style={{ fontSize: 20, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>
       )}
-      <div style={{ position: "absolute", bottom: 6, left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+      <div style={{ position: "absolute", bottom: "calc(6px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
 
       {profileModalOpen && (
         <ProfileModal
