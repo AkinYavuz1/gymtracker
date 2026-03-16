@@ -278,12 +278,16 @@ export async function seedDummyData() {
             await supabase.from('workout_sets').insert(allSets);
           }
 
-          // Batch insert PRs
+          // Batch insert PRs (1RM and volume)
           const dummyPRs = [
-            { user_id: user.id, exercise_name: 'Bench Press', weight_kg: 120, reps: 8 },
-            { user_id: user.id, exercise_name: 'Back Squat', weight_kg: 180, reps: 6 },
-            { user_id: user.id, exercise_name: 'Deadlift', weight_kg: 200, reps: 5 },
-            { user_id: user.id, exercise_name: 'Overhead Press', weight_kg: 80, reps: 8 },
+            { user_id: user.id, exercise_name: 'Bench Press', weight_kg: 120, reps: 8, pr_type: '1rm' },
+            { user_id: user.id, exercise_name: 'Back Squat', weight_kg: 180, reps: 6, pr_type: '1rm' },
+            { user_id: user.id, exercise_name: 'Deadlift', weight_kg: 200, reps: 5, pr_type: '1rm' },
+            { user_id: user.id, exercise_name: 'Overhead Press', weight_kg: 80, reps: 8, pr_type: '1rm' },
+            { user_id: user.id, exercise_name: 'Bench Press', weight_kg: 100, reps: 12, pr_type: 'volume' },
+            { user_id: user.id, exercise_name: 'Back Squat', weight_kg: 140, reps: 10, pr_type: 'volume' },
+            { user_id: user.id, exercise_name: 'Deadlift', weight_kg: 160, reps: 8, pr_type: 'volume' },
+            { user_id: user.id, exercise_name: 'Overhead Press', weight_kg: 60, reps: 12, pr_type: 'volume' },
           ];
           await supabase.from('personal_records').insert(dummyPRs);
         }

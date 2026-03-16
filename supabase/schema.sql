@@ -149,11 +149,13 @@ CREATE TABLE public.personal_records (
     weight_kg       DECIMAL(6,1) NOT NULL,
     reps            INTEGER NOT NULL,
     estimated_1rm   DECIMAL(6,1),
+    set_volume      DECIMAL(8,1),
+    pr_type         TEXT NOT NULL DEFAULT '1rm' CHECK (pr_type IN ('1rm', 'volume')),
     achieved_at     TIMESTAMPTZ DEFAULT now(),
     workout_id      UUID REFERENCES public.workouts(id) ON DELETE SET NULL
 );
 
--- Auto-calculate estimated 1RM using Epley formula
+-- Auto-calculate estimated 1RM and set volume
 CREATE OR REPLACE FUNCTION public.calc_estimated_1rm()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -162,6 +164,7 @@ BEGIN
     ELSE
         NEW.estimated_1rm = ROUND((NEW.weight_kg * (1 + NEW.reps / 30.0))::NUMERIC, 1);
     END IF;
+    NEW.set_volume = ROUND((NEW.weight_kg * NEW.reps)::NUMERIC, 1);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -192,16 +195,41 @@ CREATE TABLE public.ai_messages (
 );
 
 
+-- ─── PUSH NOTIFICATIONS ───────────────────────────────────
+
+CREATE TABLE public.push_subscriptions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    endpoint        TEXT NOT NULL UNIQUE,
+    p256dh          TEXT NOT NULL,
+    auth            TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    updated_at      TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE public.notification_preferences (
+    user_id             UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
+    workout_reminders   BOOLEAN DEFAULT true,
+    rest_day_alerts     BOOLEAN DEFAULT true,
+    pr_celebrations     BOOLEAN DEFAULT true,
+    weekly_summary      BOOLEAN DEFAULT true,
+    ai_coach_tips       BOOLEAN DEFAULT true,
+    streak_alerts       BOOLEAN DEFAULT true,
+    updated_at          TIMESTAMPTZ DEFAULT now()
+);
+
+
 -- ─── INDEXES ────────────────────────────────────────────────
 
 CREATE INDEX idx_templates_user        ON public.templates(user_id);
 CREATE INDEX idx_template_ex_template  ON public.template_exercises(template_id, sort_order);
 CREATE INDEX idx_workouts_user_date    ON public.workouts(user_id, started_at DESC);
 CREATE INDEX idx_sets_workout          ON public.workout_sets(workout_id);
-CREATE INDEX idx_prs_user_exercise     ON public.personal_records(user_id, exercise_name, estimated_1rm DESC);
+CREATE INDEX idx_prs_user_exercise     ON public.personal_records(user_id, exercise_name, pr_type, estimated_1rm DESC);
 CREATE INDEX idx_ai_conv_user          ON public.ai_conversations(user_id, created_at DESC);
 CREATE INDEX idx_ai_msgs_conv          ON public.ai_messages(conversation_id, created_at);
 CREATE INDEX idx_profiles_stripe       ON public.profiles(stripe_customer_id) WHERE stripe_customer_id IS NOT NULL;
+CREATE INDEX idx_push_subs_user        ON public.push_subscriptions(user_id);
 
 
 -- ─── ROW LEVEL SECURITY (RLS) ──────────────────────────────
@@ -215,6 +243,8 @@ ALTER TABLE public.workout_sets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.personal_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: users can read/update their own
 CREATE POLICY "Users read own profile"   ON public.profiles FOR SELECT USING (auth.uid() = id);
@@ -250,6 +280,14 @@ CREATE POLICY "Users CRUD own AI convos"
 CREATE POLICY "Users CRUD own AI messages"
     ON public.ai_messages FOR ALL
     USING (conversation_id IN (SELECT id FROM public.ai_conversations WHERE user_id = auth.uid()));
+
+-- Push subscriptions
+CREATE POLICY "Users CRUD own push subscriptions"
+    ON public.push_subscriptions FOR ALL USING (auth.uid() = user_id);
+
+-- Notification preferences
+CREATE POLICY "Users CRUD own notification prefs"
+    ON public.notification_preferences FOR ALL USING (auth.uid() = user_id);
 
 
 -- ─── HELPER FUNCTIONS ───────────────────────────────────────
@@ -354,15 +392,15 @@ BEGIN
     SELECT * INTO v_profile FROM public.profiles WHERE id = p_user_id;
     v_weekly := public.get_weekly_stats(p_user_id);
     
-    -- Get top PRs
-    SELECT string_agg(exercise_name || ' ' || weight_kg || 'kg x' || reps, ', ')
+    -- Get top PRs (1RM and volume)
+    SELECT string_agg(exercise_name || ' ' || weight_kg || 'kg x' || reps || ' (' || pr_type || ')', ', ')
     INTO v_prs
     FROM (
-        SELECT DISTINCT ON (exercise_name) exercise_name, weight_kg, reps
+        SELECT DISTINCT ON (exercise_name, pr_type) exercise_name, weight_kg, reps, pr_type
         FROM public.personal_records
         WHERE user_id = p_user_id
-        ORDER BY exercise_name, estimated_1rm DESC
-        LIMIT 6
+        ORDER BY exercise_name, pr_type, estimated_1rm DESC
+        LIMIT 10
     ) sub;
     
     -- Get recent workouts

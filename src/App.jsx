@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
+import ExerciseAnimation from "./lib/exerciseAnimations";
+import { registerServiceWorker, getNotificationPermission, requestNotificationPermission, subscribeToPush, unsubscribeFromPush, getCurrentSubscription, getNotificationPreferences, updateNotificationPreferences } from "./lib/notifications";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -48,10 +50,10 @@ function Pill({ children, active, color, onClick, style = {} }) {
   return (<button onClick={onClick} style={{ padding: "8px 16px", borderRadius: 12, border: active ? `1.5px solid ${color || C.accent}` : `1px solid ${C.border}`, background: active ? `${color || C.accent}15` : C.card, color: active ? (color || C.accent) : "rgba(255,255,255,0.55)", fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.2s ease", ...style }}>{children}</button>);
 }
 function WeightStepper({ value, onChange, color = C.accent }) {
-  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Weight (kg)</div><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button onClick={() => onChange(Math.max(0, value - 2.5))} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button><div style={{ fontSize: 38, fontWeight: 800, color: "#fff", fontFamily: C.font, minWidth: 80, textAlign: "center", lineHeight: 1 }}>{value}<span style={{ fontSize: 14, color: C.dim, marginLeft: 2 }}>kg</span></div><button onClick={() => onChange(value + 2.5)} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${color}40`, background: `${color}12`, color, fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button></div><div style={{ display: "flex", gap: 6 }}>{[2.5, 5, 10].map(j => (<button key={j} onClick={() => onChange(value + j)} style={{ padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: "rgba(255,255,255,0.5)", fontSize: 11, fontFamily: C.mono, cursor: "pointer" }}>+{j}</button>))}</div></div>);
+  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Weight (kg)</div><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button onClick={() => onChange(Math.max(0, value - 2.5))} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button><div style={{ fontSize: 38, fontWeight: 800, color: "#fff", fontFamily: C.font, minWidth: 80, textAlign: "center", lineHeight: 1 }}>{value}<span style={{ fontSize: 14, color: C.dim, marginLeft: 2 }}>kg</span></div><button onClick={() => onChange(value + 2.5)} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${color}40`, background: `${color}12`, color, fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button></div><div style={{ display: "flex", gap: 4, flexWrap: "wrap", justifyContent: "center" }}>{[50, 20, 10, 5, 2.5].map(j => (<button key={-j} onClick={() => onChange(Math.max(0, value - j))} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: "rgba(255,80,80,0.6)", fontSize: 11, fontFamily: C.mono, cursor: "pointer" }}>−{j}</button>))}{[2.5, 5, 10, 20, 50].map(j => (<button key={j} onClick={() => onChange(value + j)} style={{ padding: "5px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: "rgba(255,255,255,0.5)", fontSize: 11, fontFamily: C.mono, cursor: "pointer" }}>+{j}</button>))}</div></div>);
 }
 function RepBubbles({ value, onChange, color = C.accent }) {
-  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Reps</div><div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6, width: "100%", maxWidth: 280 }}>{[1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 15, 20].map(n => (<button key={n} onClick={() => onChange(n)} style={{ width: "100%", aspectRatio: "1", borderRadius: 12, border: value === n ? `2px solid ${color}` : `1px solid ${C.border}`, background: value === n ? `${color}18` : "rgba(255,255,255,0.02)", color: value === n ? color : "rgba(255,255,255,0.5)", fontSize: 15, fontWeight: 700, fontFamily: C.font, cursor: "pointer", transition: "all .15s ease", display: "flex", alignItems: "center", justifyContent: "center" }}>{n}</button>))}</div></div>);
+  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Reps</div><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button onClick={() => onChange(Math.max(1, value - 1))} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button><div style={{ fontSize: 38, fontWeight: 800, color: "#fff", fontFamily: C.font, minWidth: 60, textAlign: "center", lineHeight: 1 }}>{value}</div><button onClick={() => onChange(value + 1)} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${color}40`, background: `${color}12`, color, fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>{[1, 3, 5, 6, 8, 10, 12, 15, 20].map(n => (<button key={n} onClick={() => onChange(n)} style={{ padding: "6px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.02)", color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>{n}</button>))}</div></div>);
 }
 
 /* ═══ PRICING SCREEN ═══ */
@@ -576,7 +578,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
 
   // Calculate stats from workouts prop
   const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
   weekStart.setHours(0, 0, 0, 0);
   const weekWorkouts = workouts.filter(wo => new Date(wo.started_at) >= weekStart);
   const totalVolume = weekWorkouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
@@ -599,7 +601,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
   })();
 
   const volumeStr = totalVolume > 0
-    ? (totalVolume >= 1000 ? (totalVolume / 1000).toFixed(1) + "k" : Math.round(totalVolume)) + " kg"
+    ? Math.round(totalVolume).toLocaleString() + " kg"
     : "—";
 
   // Format duration: show minutes or hours
@@ -648,7 +650,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
       <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === todayIdx ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === todayIdx ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === todayIdx ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
       <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{chartData.length > 1 && chartData[0].v > 0 ? ((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100 >= 0 ? "↑" : "↓") + " " + Math.abs(Math.round((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100)) + "%" : ""}</div></div><MiniChart data={chartData} /></div>
-      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</span><span style={{ fontSize: 12, color: C.dim }}>1RM</span></div></div>))}</div>
+      <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.filter(p => (p.pr_type || "1rm") === "1rm").slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</span><span style={{ fontSize: 12, color: C.dim }}>1RM</span></div></div>))}</div>
     </div>
   );
 }
@@ -754,6 +756,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
   const [rest, setRest] = useState(0); const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
   const [saving, setSaving] = useState(false);
   const [previewEx, setPreviewEx] = useState(null); // { name, equipment, icon, gifUrl, loading }
+  const [demoIdx, setDemoIdx] = useState(null); // index of exercise showing inline animation
   const color = template.color;
   useEffect(() => { const i = setInterval(() => setTimer(t => t + 1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => { if (rest > 0) { const i = setInterval(() => setRest(t => t <= 1 ? 0 : t - 1), 1000); return () => clearInterval(i); } }, [rest]);
@@ -849,7 +852,8 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
       {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
       {exs.map((ex, ei) => (
         <div key={ei} style={{ background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div><button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button></div>
+          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><button onClick={() => setDemoIdx(demoIdx === ei ? null : ei)} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${demoIdx === ei ? color + '40' : C.border}`, background: demoIdx === ei ? `${color}12` : 'rgba(255,255,255,0.03)', color: demoIdx === ei ? color : C.dim, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Show exercise demo">?</button><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div></div><button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button></div>
+          {demoIdx === ei && <div style={{ padding: "0 16px 12px" }}><ExerciseAnimation name={ex.name} color={color} height={120} /></div>}
           <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "0 16px 4px", fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase" }}><div>Set</div><div>Kg</div><div>Reps</div><div style={{ textAlign: "center" }}>Log</div></div>
           {ex.setsData.map((s, si) => (
             <div key={si} style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "9px 16px", alignItems: "center", background: s.done ? `${color}06` : "transparent", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
@@ -890,7 +894,7 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [] }) {
 
   const stats = [
     { l: "Workouts", v: workouts.length.toString(), c: "#DFFF3C" },
-    { l: "Volume", v: (totalVolume / 1000).toFixed(0) + "k", c: "#3CFFF0" },
+    { l: "Volume", v: Math.round(totalVolume).toLocaleString(), c: "#3CFFF0" },
     { l: "Avg Time", v: Math.round(avgDuration) + "m", c: "#FF6B3C" },
     { l: "PRs", v: prs.length.toString(), c: "#B47CFF" }
   ];
@@ -964,7 +968,7 @@ function HistoryScreen({ workouts = [] }) {
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.mono }}>{Math.round((w.duration_secs || 0) / 60)}m</div>
-              <div style={{ fontSize: 11, color: C.dim }}>{(w.total_volume_kg || 0) >= 1000 ? ((w.total_volume_kg || 0) / 1000).toFixed(1) + "k" : Math.round(w.total_volume_kg || 0)} kg</div>
+              <div style={{ fontSize: 11, color: C.dim }}>{Math.round(w.total_volume_kg || 0).toLocaleString()} kg</div>
             </div>
           </div>
         </div>
@@ -976,10 +980,15 @@ function HistoryScreen({ workouts = [] }) {
 /* ═══ PERSONAL RECORDS ═══ */
 function PRScreen({ onBack, prs = [] }) {
   const [m, setM] = useState(false);
+  const [tab, setTab] = useState("1rm");
 
   useEffect(() => { setM(true); }, []);
 
   const colors = ["#DFFF3C", "#3CFFF0", "#FF6B3C", "#B47CFF", "#47B8FF"];
+
+  const strengthPRs = prs.filter(p => (p.pr_type || "1rm") === "1rm");
+  const volumePRs = prs.filter(p => p.pr_type === "volume");
+  const filtered = tab === "1rm" ? strengthPRs : volumePRs;
 
   return (
     <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
@@ -990,14 +999,25 @@ function PRScreen({ onBack, prs = [] }) {
         <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Lifting</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Personal Records</div>
       </div>
-      {prs.length === 0 && (
+      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+        {[{ key: "1rm", label: "1 Rep Max" }, { key: "volume", label: "Volume" }].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            flex: 1, padding: "10px 0", borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: C.font, cursor: "pointer",
+            background: tab === t.key ? C.accent : C.card,
+            color: tab === t.key ? "#000" : "#fff",
+            border: tab === t.key ? "none" : `1px solid ${C.border}`,
+            transition: "all .2s"
+          }}>{t.label}</button>
+        ))}
+      </div>
+      {filtered.length === 0 && (
         <div style={{ textAlign: "center", paddingTop: 40 }}>
-          <div style={{ fontSize: 36, marginBottom: 12 }}>🏋️</div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No PRs Yet</div>
-          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete workouts to start tracking your personal records.</div>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>{tab === "1rm" ? "🏋️" : "📊"}</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No {tab === "1rm" ? "1RM" : "Volume"} PRs Yet</div>
+          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete workouts to start tracking your {tab === "1rm" ? "strength" : "volume"} records.</div>
         </div>
       )}
-      {prs.map((p, i) => (
+      {filtered.map((p, i) => (
         <div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1008,8 +1028,17 @@ function PRScreen({ onBack, prs = [] }) {
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{p.weight_kg}kg</div>
-              {p.estimated_1rm && <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>e1RM: {Math.round(p.estimated_1rm)}kg</div>}
+              {tab === "1rm" ? (
+                <>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>e1RM</div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{Math.round(p.set_volume || p.weight_kg * p.reps).toLocaleString()}kg</div>
+                  <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>vol</div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1019,7 +1048,201 @@ function PRScreen({ onBack, prs = [] }) {
 }
 
 /* ═══ PROFILE MODAL ═══ */
-function ProfileModal({ profile, plan, user, onClose, onLogout }) {
+/* ═══ NOTIFICATION PREFERENCES SCREEN ═══ */
+function NotificationScreen({ onBack }) {
+  const [permission, setPermission] = useState(getNotificationPermission());
+  const [subscribed, setSubscribed] = useState(false);
+  const [showPrePrompt, setShowPrePrompt] = useState(false);
+  const [prefs, setPrefs] = useState({
+    workout_reminders: true,
+    rest_day_alerts: true,
+    pr_celebrations: true,
+    weekly_summary: true,
+    ai_coach_tips: true,
+    streak_alerts: true,
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const savedPrefs = await getNotificationPreferences();
+      setPrefs(savedPrefs);
+      const sub = await getCurrentSubscription();
+      setSubscribed(!!sub);
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    if (permission === "default") {
+      setShowPrePrompt(true);
+      return;
+    }
+    if (permission === "granted") {
+      const sub = await subscribeToPush();
+      setSubscribed(!!sub);
+    }
+  };
+
+  const handlePrePromptAccept = async () => {
+    setShowPrePrompt(false);
+    const result = await requestNotificationPermission();
+    setPermission(result);
+    if (result === "granted") {
+      const sub = await subscribeToPush();
+      setSubscribed(!!sub);
+    }
+  };
+
+  const handleDisable = async () => {
+    await unsubscribeFromPush();
+    setSubscribed(false);
+  };
+
+  const togglePref = async (key) => {
+    const updated = { ...prefs, [key]: !prefs[key] };
+    setPrefs(updated);
+    await updateNotificationPreferences(updated);
+  };
+
+  const NOTIF_TYPES = [
+    { key: "workout_reminders", label: "Workout Reminders", desc: "Get reminded when it's time to train", icon: "💪" },
+    { key: "rest_day_alerts", label: "Rest Day Alerts", desc: "Know when to take a recovery day", icon: "😴" },
+    { key: "pr_celebrations", label: "PR Celebrations", desc: "Celebrate when you hit new records", icon: "🏆" },
+    { key: "weekly_summary", label: "Weekly Summary", desc: "Weekly training recap and stats", icon: "📊" },
+    { key: "ai_coach_tips", label: "AI Coach Tips", desc: "Personalized training insights", icon: "🧠" },
+    { key: "streak_alerts", label: "Streak Alerts", desc: "Keep your training streak alive", icon: "🔥" },
+  ];
+
+  return (
+    <div style={{ padding: "0 20px 110px" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "16px 0 24px" }}>
+        <div style={{ fontSize: 10, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>Stay on track</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Notifications</div>
+        <div style={{ fontSize: 13, color: C.dim, marginTop: 6 }}>Choose what you want to hear about</div>
+      </div>
+
+      {/* Master toggle */}
+      <div style={{ background: C.card, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: C.font }}>
+              {subscribed ? "Notifications Active" : "Enable Notifications"}
+            </div>
+            <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>
+              {permission === "denied"
+                ? "Blocked in browser settings"
+                : subscribed
+                ? "You'll receive push notifications"
+                : "Turn on to get training reminders"}
+            </div>
+          </div>
+          <button
+            onClick={subscribed ? handleDisable : handleEnableNotifications}
+            disabled={permission === "denied" || loading}
+            style={{
+              width: 52, height: 30, borderRadius: 15, border: "none", cursor: permission === "denied" ? "not-allowed" : "pointer",
+              background: subscribed ? C.accent : "rgba(255,255,255,0.1)",
+              position: "relative", transition: "background 0.2s ease",
+              opacity: permission === "denied" ? 0.3 : 1,
+            }}
+          >
+            <div style={{
+              width: 24, height: 24, borderRadius: 12, background: "#fff",
+              position: "absolute", top: 3,
+              left: subscribed ? 25 : 3,
+              transition: "left 0.2s ease",
+              boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+            }} />
+          </button>
+        </div>
+        {permission === "denied" && (
+          <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 10, background: "rgba(255,107,60,0.1)", border: "1px solid rgba(255,107,60,0.2)", fontSize: 11, color: "#FF6B3C", fontFamily: C.mono }}>
+            Notifications are blocked. Enable them in your browser settings, then refresh.
+          </div>
+        )}
+      </div>
+
+      {/* Notification type toggles */}
+      <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, overflow: "hidden", opacity: subscribed ? 1 : 0.4, pointerEvents: subscribed ? "auto" : "none", transition: "opacity 0.2s ease" }}>
+        {NOTIF_TYPES.map((n, i) => (
+          <div key={n.key} style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 16px",
+            borderBottom: i < NOTIF_TYPES.length - 1 ? `1px solid ${C.border}` : "none",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+              <span style={{ fontSize: 20 }}>{n.icon}</span>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#fff", fontFamily: C.font }}>{n.label}</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>{n.desc}</div>
+              </div>
+            </div>
+            <button
+              onClick={() => togglePref(n.key)}
+              style={{
+                width: 44, height: 26, borderRadius: 13, border: "none", cursor: "pointer",
+                background: prefs[n.key] ? C.accent : "rgba(255,255,255,0.1)",
+                position: "relative", transition: "background 0.2s ease", flexShrink: 0,
+              }}
+            >
+              <div style={{
+                width: 20, height: 20, borderRadius: 10, background: "#fff",
+                position: "absolute", top: 3,
+                left: prefs[n.key] ? 21 : 3,
+                transition: "left 0.2s ease",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+              }} />
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {/* Pre-prompt overlay */}
+      {showPrePrompt && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", backdropFilter: "blur(16px)", zIndex: 400, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setShowPrePrompt(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: 24, padding: "32px 24px", maxWidth: 340, width: "100%" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🔔</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 8 }}>Never Miss a Workout</div>
+              <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>
+                Notifications help you stay consistent with your training. Get workout reminders, PR celebrations, and AI-powered tips.
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={handlePrePromptAccept}
+                style={{
+                  width: "100%", padding: 14, borderRadius: 14, border: "none",
+                  background: C.accent, color: C.bg,
+                  fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: "pointer",
+                }}
+              >
+                Enable Notifications
+              </button>
+              <button
+                onClick={() => setShowPrePrompt(false)}
+                style={{
+                  width: "100%", padding: 14, borderRadius: 14,
+                  border: `1px solid ${C.border}`, background: "transparent",
+                  color: C.dim, fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer",
+                }}
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications }) {
   if (!user) return null;
 
   const accountAge = profile?.created_at
@@ -1072,11 +1295,38 @@ function ProfileModal({ profile, plan, user, onClose, onLogout }) {
         </div>
 
         {/* Plan Details */}
-        <div style={{ background: `${planData.color}08`, borderRadius: 16, padding: "14px", border: `1px solid ${planData.color}30`, marginBottom: 24 }}>
+        <div style={{ background: `${planData.color}08`, borderRadius: 16, padding: "14px", border: `1px solid ${planData.color}30`, marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: planData.color, fontWeight: 700, textAlign: "center" }}>
             {plan === "free" ? "5 AI queries/day" : plan === "pro" ? "30 AI queries/day" : "Unlimited AI queries"}
           </div>
         </div>
+
+        {/* Notifications Button */}
+        <button
+          onClick={onNotifications}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 14,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: C.font,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18 }}>🔔</span>
+            Notifications
+          </span>
+          <span style={{ fontSize: 16, color: C.dim }}>→</span>
+        </button>
 
         {/* Logout Button */}
         <button
@@ -1130,6 +1380,9 @@ export default function GAIns() {
     try { const vt = await withTimeout(getVolumeTrend(), 10000); setAppVolumeTrend(vt || []); } catch (e) { console.error("Failed to load volume trend:", e); }
     setDataLoaded(true);
   };
+
+  // Register service worker for push notifications
+  useEffect(() => { registerServiceWorker(); }, []);
 
   // Auth listener
   useEffect(() => {
@@ -1378,8 +1631,9 @@ export default function GAIns() {
         {screen === "history" && <HistoryScreen workouts={appWorkouts} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
         {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
+        {screen === "notifications" && <NotificationScreen onBack={() => nav("home")} />}
       </div>
-      {!["workout", "pricing", "prs"].includes(screen) && (
+      {!["workout", "pricing", "prs", "notifications"].includes(screen) && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "calc(72px + env(safe-area-inset-bottom, 0px))", background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "flex-start", paddingTop: 10 }}>
           {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 16px" }}><span style={{ fontSize: 20, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>
@@ -1392,6 +1646,10 @@ export default function GAIns() {
           user={user}
           plan={plan}
           onClose={() => setProfileModalOpen(false)}
+          onNotifications={() => {
+            setProfileModalOpen(false);
+            nav("notifications");
+          }}
           onLogout={() => {
             setProfileModalOpen(false);
             handleLogout();
