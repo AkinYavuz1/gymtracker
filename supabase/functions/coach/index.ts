@@ -67,11 +67,19 @@ Deno.serve(async (req: Request) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { data: quota } = await supabaseAdmin.rpc("check_ai_quota", {
+    const { data: quota, error: quotaError } = await supabaseAdmin.rpc("check_ai_quota", {
       p_user_id: user.id,
     });
 
-    if (!quota.allowed) {
+    if (quotaError) {
+      console.error("Quota check error:", quotaError);
+      return new Response(
+        JSON.stringify({ error: "Quota check failed", details: quotaError.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!quota || !quota.allowed) {
       return new Response(
         JSON.stringify({
           error: "Daily limit reached",
@@ -84,9 +92,12 @@ Deno.serve(async (req: Request) => {
     }
 
     // 4. Build user context from their real data
-    const { data: userContext } = await supabaseAdmin.rpc("build_ai_context", {
+    const { data: userContext, error: contextError } = await supabaseAdmin.rpc("build_ai_context", {
       p_user_id: user.id,
     });
+    if (contextError) {
+      console.error("Context build error:", contextError);
+    }
 
     // 5. Load conversation history if continuing
     let history: Array<{ role: string; content: string }> = [];
@@ -139,7 +150,10 @@ ${userContext || "New user — no workout data yet. Give general advice and enco
     if (!anthropicResponse.ok) {
       const errBody = await anthropicResponse.text();
       console.error("Anthropic API error:", errBody);
-      throw new Error(`Anthropic API returned ${anthropicResponse.status}`);
+      return new Response(
+        JSON.stringify({ error: "Anthropic API error", details: errBody }),
+        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const aiData = await anthropicResponse.json();
@@ -212,7 +226,7 @@ ${userContext || "New user — no workout data yet. Give general advice and enco
   } catch (error) {
     console.error("Coach function error:", error);
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: "Internal server error", details: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

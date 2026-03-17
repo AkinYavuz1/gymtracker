@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "db:push": "supabase db push",
-    "functions:deploy": "supabase functions deploy coach && supabase functions deploy stripe-webhook",
+    "functions:deploy": "supabase functions deploy coach && supabase functions deploy stripe-webhook && supabase functions deploy send-notification",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

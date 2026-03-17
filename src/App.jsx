@@ -3,6 +3,7 @@ import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDum
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
 import ExerciseAnimation from "./lib/exerciseAnimations";
+import { getAnimalComparison, getAnimalStyle } from "./lib/animalWeights";
 import { registerServiceWorker, getNotificationPermission, requestNotificationPermission, subscribeToPush, unsubscribeFromPush, getCurrentSubscription, getNotificationPreferences, updateNotificationPreferences } from "./lib/notifications";
 
 /* ═══ API CONFIG ═══ */
@@ -615,7 +616,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
     : [{ w: "W1", v: 0 }];
 
   const stats = [
-    { label: "Workouts", val: weekWorkouts.length.toString(), sub: "this week" },
+    { label: "Workouts", val: new Set(weekWorkouts.map(wo => new Date(wo.started_at).toDateString())).size.toString(), sub: "this week" },
     { label: "Volume", val: volumeStr, sub: "this week" },
     { label: "Streak", val: streak.toString(), sub: "days" },
     { label: "Duration", val: durationStr, sub: "avg/session" }
@@ -799,7 +800,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
 
     if (!isOnline || !user) {
       saveOffline();
-      onFinish();
+      onFinish([]);
       setSaving(false);
       return;
     }
@@ -827,10 +828,94 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
             .from("workout_sets")
             .insert(completedSets.map(s => ({ ...s, workout_id: workout.id })));
           if (setsError) console.error("Error saving sets:", setsError);
+
+          // Detect and upsert personal records (1RM and volume)
+          const byExercise = {};
+          completedSets.forEach(s => {
+            if (!byExercise[s.exercise_name]) byExercise[s.exercise_name] = [];
+            byExercise[s.exercise_name].push(s);
+          });
+
+          const newPRs = [];
+
+          for (const [exerciseName, sets] of Object.entries(byExercise)) {
+            // Best 1RM set: highest estimated 1RM (Epley formula)
+            const best1rm = sets.reduce((best, s) => {
+              const e1rm = s.reps === 1 ? s.weight_kg : s.weight_kg * (1 + s.reps / 30);
+              return e1rm > best.e1rm ? { s, e1rm } : best;
+            }, { s: null, e1rm: 0 });
+
+            // Best volume set: highest weight × reps
+            const bestVol = sets.reduce((best, s) => {
+              const vol = s.weight_kg * s.reps;
+              return vol > best.vol ? { s, vol } : best;
+            }, { s: null, vol: 0 });
+
+            // Check and upsert 1RM PR (one per exercise)
+            if (best1rm.s) {
+              const { data: existing } = await supabase
+                .from("personal_records")
+                .select("id, estimated_1rm")
+                .eq("user_id", userId)
+                .eq("exercise_name", exerciseName)
+                .eq("pr_type", "1rm")
+                .limit(1);
+
+              if (existing?.length) {
+                if (best1rm.e1rm > existing[0].estimated_1rm) {
+                  await supabase.from("personal_records").update({
+                    weight_kg: best1rm.s.weight_kg, reps: best1rm.s.reps,
+                    workout_id: workout.id, achieved_at: new Date().toISOString()
+                  }).eq("id", existing[0].id);
+                  newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
+                }
+              } else {
+                await supabase.from("personal_records").insert({
+                  user_id: userId, exercise_name: exerciseName,
+                  weight_kg: best1rm.s.weight_kg, reps: best1rm.s.reps,
+                  pr_type: "1rm", workout_id: workout.id
+                });
+                newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
+              }
+            }
+
+            // Check and upsert volume PR (one per exercise)
+            if (bestVol.s) {
+              const { data: existing } = await supabase
+                .from("personal_records")
+                .select("id, set_volume")
+                .eq("user_id", userId)
+                .eq("exercise_name", exerciseName)
+                .eq("pr_type", "volume")
+                .limit(1);
+
+              if (existing?.length) {
+                if (bestVol.vol > (existing[0].set_volume || 0)) {
+                  await supabase.from("personal_records").update({
+                    weight_kg: bestVol.s.weight_kg, reps: bestVol.s.reps,
+                    workout_id: workout.id, achieved_at: new Date().toISOString()
+                  }).eq("id", existing[0].id);
+                  newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
+                }
+              } else {
+                await supabase.from("personal_records").insert({
+                  user_id: userId, exercise_name: exerciseName,
+                  weight_kg: bestVol.s.weight_kg, reps: bestVol.s.reps,
+                  pr_type: "volume", workout_id: workout.id
+                });
+                newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
+              }
+            }
+          }
+
+          return newPRs;
         }
       };
 
-      await Promise.race([save(), timeout]);
+      const detectedPRs = await Promise.race([save(), timeout]) || [];
+      setSaving(false);
+      onFinish(detectedPRs);
+      return;
     } catch (e) {
       console.error("Error saving workout:", e);
       saveOffline();
@@ -842,7 +927,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
     }
 
     setSaving(false);
-    onFinish();
+    onFinish([]);
   };
 
   return (
@@ -1357,6 +1442,7 @@ export default function GAIns() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [celebrationPRs, setCelebrationPRs] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSync, setPendingSync] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -1625,7 +1711,7 @@ export default function GAIns() {
       <div ref={scrollRef} style={{ flex: 1, overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
         {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); nav("workout"); }} onBack={() => nav("home")} />}
-        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={() => { setPendingSync(getPendingCount()); refreshAppData(); nav("home"); }} onBack={() => nav("home")} />}
+        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={(prs) => { setPendingSync(getPendingCount()); refreshAppData(); if (prs && prs.length > 0) { setCelebrationPRs(prs); } else { nav("home"); } }} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} />}
@@ -1639,6 +1725,57 @@ export default function GAIns() {
         </div>
       )}
       <div style={{ position: "absolute", bottom: "calc(6px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+
+      {celebrationPRs && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: "#111113", borderRadius: 24, padding: "32px 24px", maxWidth: 380, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 48, marginBottom: 8 }}>🏆</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: C.accent, fontFamily: C.font, marginBottom: 4 }}>New Personal Record{celebrationPRs.length > 1 ? "s" : ""}!</div>
+              <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Congratulations on crushing it!</div>
+            </div>
+            {celebrationPRs.map((pr, i) => {
+              const compWeight = pr.type === "1rm" ? pr.e1rm : pr.weight;
+              const animal = getAnimalComparison(compWeight);
+              const animalStyle = getAnimalStyle(animal.row, animal.col);
+              return (
+                <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 16, marginBottom: 12, border: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: C.font }}>{pr.exercise}</div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase",
+                      padding: "3px 8px", borderRadius: 6,
+                      background: pr.type === "1rm" ? "rgba(255,220,50,0.15)" : "rgba(50,220,200,0.15)",
+                      color: pr.type === "1rm" ? "#FFD700" : "#3DDDC4",
+                    }}>{pr.type === "1rm" ? "1RM" : "VOLUME"}</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: C.dim, fontFamily: C.mono, marginBottom: 12 }}>
+                    {pr.weight}kg × {pr.reps} rep{pr.reps !== 1 ? "s" : ""}
+                    {pr.type === "1rm" && <span> (e1RM: {Math.round(pr.e1rm)}kg)</span>}
+                    {pr.type === "volume" && <span> (vol: {pr.volume}kg)</span>}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <div style={{ ...animalStyle, borderRadius: 16, backgroundRepeat: "no-repeat" }} />
+                    <div style={{ fontSize: 13, color: C.accent, fontWeight: 600, fontFamily: C.font, marginTop: 8 }}>
+                      That's like lifting a {animal.name}!
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <button
+              onClick={() => { setCelebrationPRs(null); nav("home"); }}
+              style={{
+                width: "100%", padding: 14, borderRadius: 14, border: "none",
+                background: C.accent, color: C.bg, marginTop: 8,
+                fontSize: 15, fontWeight: 800, fontFamily: C.font, cursor: "pointer",
+              }}
+            >
+              Let's Go
+            </button>
+          </div>
+        </div>
+      )}
 
       {profileModalOpen && (
         <ProfileModal
