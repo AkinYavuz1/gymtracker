@@ -153,6 +153,17 @@ export async function getWorkouts(limit = 10) {
   return data || [];
 }
 
+export async function getWorkoutSets(workoutIds) {
+  if (!workoutIds || workoutIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('workout_sets')
+    .select('*')
+    .in('workout_id', workoutIds)
+    .order('set_number', { ascending: true });
+  if (error) console.error('getWorkoutSets error:', error);
+  return data || [];
+}
+
 export async function getPersonalRecords() {
   const { data, error } = await supabase
     .from('personal_records')

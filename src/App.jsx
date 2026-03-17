@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase } from "./lib/supabase";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
 import ExerciseAnimation from "./lib/exerciseAnimations";
@@ -572,7 +572,7 @@ function AuthScreen({ onSignUp, onSignIn }) {
 }
 
 /* ═══ HOME ═══ */
-function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, workouts = [], prs = [], volumeTrend = [] }) {
+function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, workouts = [], prs = [], volumeTrend = [], onDayClick }) {
   const [m, setM] = useState(false);
 
   useEffect(() => { setM(true); }, []);
@@ -616,7 +616,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
     : [{ w: "W1", v: 0 }];
 
   const stats = [
-    { label: "Workouts", val: new Set(weekWorkouts.map(wo => new Date(wo.started_at).toDateString())).size.toString(), sub: "this week" },
+    { label: "Workouts", val: new Set(weekWorkouts.map(wo => new Date(wo.started_at).toDateString())).size.toString(), sub: "this week", action: () => onNav("weekDetail") },
     { label: "Volume", val: volumeStr, sub: "this week" },
     { label: "Streak", val: streak.toString(), sub: "days" },
     { label: "Duration", val: durationStr, sub: "avg/session" }
@@ -624,10 +624,15 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
 
   const userName = (profile?.full_name || profile?.name || user?.user_metadata?.full_name || user?.email?.split("@")[0] || "Athlete").split(" ")[0];
   const userInitial = userName.charAt(0).toUpperCase();
-  const wd = Array(7).fill(false);
+  const wd = Array(7).fill(null);
   weekWorkouts.forEach(wo => {
-    const day = new Date(wo.started_at).getDay();
-    wd[day === 0 ? 6 : day - 1] = true;
+    const d = new Date(wo.started_at);
+    const idx = d.getDay() === 0 ? 6 : d.getDay() - 1;
+    if (!wd[idx]) {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(dayDate.getDate() + idx);
+      wd[idx] = dayDate;
+    }
   });
   const todayIdx = (() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })();
   return (
@@ -648,8 +653,8 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
         <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Ask AI Coach</div><div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>Powered by Haiku · {PLANS[plan].queries === 999 ? "Unlimited" : `${PLANS[plan].queries}/day`}</div></div>
         <div style={{ color: C.ai, fontSize: 16 }}>→</div>
       </button>
-      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === todayIdx ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === todayIdx ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === todayIdx ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: `1px solid ${C.border}` }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} onClick={() => wd[i] && onDayClick && onDayClick(wd[i])} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: wd[i] ? "pointer" : "default" }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === todayIdx ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === todayIdx ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === todayIdx ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} onClick={s.action} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: s.action ? `1.5px solid ${C.accent}30` : `1px solid ${C.border}`, cursor: s.action ? "pointer" : "default", transition: "border-color .2s" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}{s.action && <span style={{ marginLeft: 4, color: C.accent, fontSize: 9 }}>→</span>}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
       <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{chartData.length > 1 && chartData[0].v > 0 ? ((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100 >= 0 ? "↑" : "↓") + " " + Math.abs(Math.round((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100)) + "%" : ""}</div></div><MiniChart data={chartData} /></div>
       <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.filter(p => (p.pr_type || "1rm") === "1rm").slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</span><span style={{ fontSize: 12, color: C.dim }}>1RM</span></div></div>))}</div>
     </div>
@@ -1062,6 +1067,474 @@ function HistoryScreen({ workouts = [] }) {
   );
 }
 
+/* ═══ WEEK DETAIL ═══ */
+const MUSCLE_MAP = {
+  "Bench Press": "Chest", "Incline DB Press": "Chest", "Cable Fly": "Chest", "Chest Dip": "Chest", "Machine Press": "Chest", "Push-ups": "Chest",
+  "Deadlift": "Back", "Pull-ups": "Back", "Barbell Row": "Back", "Lat Pulldown": "Back", "Cable Row": "Back", "T-Bar Row": "Back",
+  "Back Squat": "Legs", "Leg Press": "Legs", "Romanian DL": "Legs", "Walking Lunge": "Legs", "Leg Curl": "Legs", "Leg Extension": "Legs",
+  "Overhead Press": "Shoulders", "Lateral Raise": "Shoulders", "Face Pull": "Shoulders", "Arnold Press": "Shoulders",
+  "Barbell Curl": "Arms", "Hammer Curl": "Arms", "Tricep Pushdown": "Arms", "Skull Crusher": "Arms",
+};
+
+function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
+  const [m, setM] = useState(false);
+  const [sets, setSets] = useState([]);
+  const [loadingSets, setLoadingSets] = useState(true);
+  const [aiInsight, setAiInsight] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [expandedWorkouts, setExpandedWorkouts] = useState({});
+  const [expandedInsightTypes, setExpandedInsightTypes] = useState({});
+  const [prsExpanded, setPrsExpanded] = useState(false);
+
+  const toggleWorkout = (id) => setExpandedWorkouts(p => ({ ...p, [id]: !p[id] }));
+  const toggleInsightType = (type) => setExpandedInsightTypes(p => ({ ...p, [type]: !p[type] }));
+
+  // Current week boundaries (Mon-Sun)
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+
+  // Previous week boundaries
+  const prevWeekStart = new Date(weekStart);
+  prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+  const prevWeekEnd = new Date(weekStart);
+
+  const weekWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= weekStart && d < weekEnd; });
+  const prevWeekWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= prevWeekStart && d < prevWeekEnd; });
+
+  useEffect(() => { setM(true); }, []);
+
+  // Load sets for this week's workouts
+  useEffect(() => {
+    (async () => {
+      const ids = weekWorkouts.map(w => w.id).filter(Boolean);
+      if (ids.length === 0) { setLoadingSets(false); return; }
+      try {
+        const data = await getWorkoutSets(ids);
+        setSets(data);
+      } catch (e) { console.error("Failed to load sets:", e); }
+      setLoadingSets(false);
+    })();
+  }, [workouts.length]);
+
+  // Group sets by workout_id then exercise_name
+  const setsByWorkout = {};
+  sets.forEach(s => {
+    if (!setsByWorkout[s.workout_id]) setsByWorkout[s.workout_id] = {};
+    if (!setsByWorkout[s.workout_id][s.exercise_name]) setsByWorkout[s.workout_id][s.exercise_name] = [];
+    setsByWorkout[s.workout_id][s.exercise_name].push(s);
+  });
+
+  // PR lookup by workout_id
+  const prByWorkout = {};
+  prs.forEach(p => { if (p.workout_id) { if (!prByWorkout[p.workout_id]) prByWorkout[p.workout_id] = new Set(); prByWorkout[p.workout_id].add(p.exercise_name); } });
+
+  // Summary stats
+  const totalVolume = weekWorkouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+  const totalTime = weekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0);
+  const weekPRs = prs.filter(p => p.workout_id && weekWorkouts.some(w => w.id === p.workout_id));
+  const totalSets = sets.length;
+  const totalReps = sets.reduce((sum, s) => sum + (s.reps || 0), 0);
+
+  // Previous week stats for comparison
+  const prevVolume = prevWeekWorkouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+  const prevTime = prevWeekWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0);
+
+  const summaryPills = [
+    { label: "Workouts", val: weekWorkouts.length },
+    { label: "Volume", val: Math.round(totalVolume).toLocaleString() + " kg" },
+    { label: "Time", val: Math.round(totalTime / 60) + " min" },
+    { label: "PRs", val: weekPRs.length },
+    { label: "Sets", val: totalSets },
+    { label: "Reps", val: totalReps },
+  ];
+
+  // Deltas
+  const deltas = [];
+  const wkDiff = weekWorkouts.length - prevWeekWorkouts.length;
+  if (prevWeekWorkouts.length > 0 || weekWorkouts.length > 0) deltas.push({ label: "Workouts", diff: wkDiff > 0 ? `+${wkDiff}` : `${wkDiff}`, positive: wkDiff >= 0 });
+  if (prevVolume > 0) { const pct = Math.round((totalVolume - prevVolume) / prevVolume * 100); deltas.push({ label: "Volume", diff: (pct >= 0 ? "+" : "") + pct + "%", positive: pct >= 0 }); }
+  if (prevTime > 0) { const diff = Math.round((totalTime - prevTime) / 60); deltas.push({ label: "Time", diff: (diff >= 0 ? "+" : "") + diff + " min", positive: diff >= 0 }); }
+
+  // Group workouts by day
+  const dayGroups = {};
+  weekWorkouts.sort((a, b) => new Date(a.started_at) - new Date(b.started_at)).forEach(wo => {
+    const dayKey = new Date(wo.started_at).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+    if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
+    dayGroups[dayKey].push(wo);
+  });
+
+  // Rule-based insights
+  const insights = [];
+
+  // Muscle group set counts
+  const muscleSetCounts = {};
+  sets.forEach(s => {
+    const group = MUSCLE_MAP[s.exercise_name] || "Other";
+    muscleSetCounts[group] = (muscleSetCounts[group] || 0) + 1;
+  });
+  Object.entries(muscleSetCounts).forEach(([group, count]) => {
+    if (count < 10 && group !== "Other") insights.push({ type: "warning", icon: "⚠️", title: `Low ${group} Volume`, body: `Only ${count} sets for ${group} this week — may be below growth threshold (10+ recommended).` });
+  });
+
+  // RPE insights per exercise
+  const exerciseRPEs = {};
+  sets.forEach(s => { if (s.rpe) { if (!exerciseRPEs[s.exercise_name]) exerciseRPEs[s.exercise_name] = []; exerciseRPEs[s.exercise_name].push(s.rpe); } });
+  Object.entries(exerciseRPEs).forEach(([ex, rpes]) => {
+    const avg = rpes.reduce((a, b) => a + b, 0) / rpes.length;
+    if (avg >= 9) insights.push({ type: "warning", icon: "🔥", title: `High RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — risk of accumulated fatigue. Consider backing off next session.` });
+    if (avg <= 5) insights.push({ type: "info", icon: "💡", title: `Low RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — you may have room to increase intensity.` });
+  });
+
+  // Volume change vs last week
+  if (prevVolume > 0) {
+    const volChange = (totalVolume - prevVolume) / prevVolume * 100;
+    if (volChange > 20) insights.push({ type: "warning", icon: "📈", title: "Volume Spike", body: `Volume jumped ${Math.round(volChange)}% this week — monitor recovery and watch for overreach signs.` });
+    if (volChange < -20) insights.push({ type: "info", icon: "📉", title: "Volume Drop", body: `Volume dropped ${Math.abs(Math.round(volChange))}% — planned deload or missed sessions?` });
+  }
+
+  // Frequency change
+  if (prevWeekWorkouts.length > 0 && weekWorkouts.length !== prevWeekWorkouts.length) {
+    const diff = weekWorkouts.length - prevWeekWorkouts.length;
+    if (diff > 0) insights.push({ type: "positive", icon: "🎯", title: "Frequency Up", body: `You trained ${weekWorkouts.length} days this week vs ${prevWeekWorkouts.length} last week — nice increase!` });
+  }
+
+  // PRs achieved
+  weekPRs.forEach(pr => {
+    insights.push({ type: "positive", icon: "🏆", title: `New PR: ${pr.exercise_name}`, body: `${pr.weight_kg}kg × ${pr.reps} (est. 1RM: ${Math.round(pr.estimated_1rm || pr.weight_kg)}kg)` });
+  });
+
+  // Group insights by type
+  const insightsByType = {};
+  insights.forEach(ins => {
+    if (!insightsByType[ins.type]) insightsByType[ins.type] = [];
+    insightsByType[ins.type].push(ins);
+  });
+  const insightTypeLabels = { warning: "Warnings", positive: "Positive", info: "Info" };
+
+  // AI analysis handler
+  const handleAIAnalysis = async () => {
+    setAiLoading(true);
+    try {
+      const exerciseSummary = Object.entries(setsByWorkout).map(([wid, exercises]) => {
+        const wo = weekWorkouts.find(w => w.id === wid);
+        return `${wo?.title || "Workout"} (${new Date(wo?.started_at).toLocaleDateString()}):\n` +
+          Object.entries(exercises).map(([name, exSets]) =>
+            `  ${name}: ${exSets.map(s => `${s.weight_kg}kg×${s.reps}${s.rpe ? ` @RPE${s.rpe}` : ""}`).join(", ")}`
+          ).join("\n");
+      }).join("\n\n");
+      const muscleStr = Object.entries(muscleSetCounts).map(([g, c]) => `${g}: ${c} sets`).join(", ");
+      const prompt = `Analyze my training week:\n\n${exerciseSummary}\n\nMuscle group sets: ${muscleStr}\nTotal volume: ${Math.round(totalVolume)}kg\nWorkouts: ${weekWorkouts.length}\nPRs: ${weekPRs.length}\n\nGive brief, actionable insights on: progressive overload, weak points, recovery, and what to focus on next week.`;
+      const res = await callCoachAPI(prompt, "Weekly Analysis");
+      setAiInsight(res.response || res.message || "No response received.");
+    } catch (e) { setAiInsight("Failed to get AI analysis: " + e.message); }
+    setAiLoading(false);
+  };
+
+  const dateRange = weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " – " + new Date(weekEnd.getTime() - 86400000).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  const insightColors = { warning: { bg: "rgba(255,180,50,0.08)", border: "rgba(255,180,50,0.2)", color: "#FFB432" }, positive: { bg: "rgba(100,255,100,0.08)", border: "rgba(100,255,100,0.2)", color: "#6CFF6C" }, info: { bg: "rgba(100,180,255,0.08)", border: "rgba(100,180,255,0.2)", color: "#64B4FF" } };
+
+  return (
+    <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transform: m ? "none" : "translateY(10px)", transition: "all .5s cubic-bezier(.22,1,.36,1)" }}>
+      {/* Back button */}
+      <div style={{ padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+
+      {/* Header */}
+      <div style={{ padding: "8px 0 18px" }}>
+        <div style={{ fontSize: 12, color: C.accent, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{dateRange}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>This Week's Training</div>
+      </div>
+
+      {/* Summary Bar */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 18, WebkitOverflowScrolling: "touch" }}>
+        {summaryPills.map((p, i) => (
+          <div key={i} style={{ flexShrink: 0, padding: "10px 16px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}`, textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{p.val}</div>
+            <div style={{ fontSize: 9, color: C.dim, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>{p.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Previous Week Comparison */}
+      {deltas.length > 0 && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
+          {deltas.map((d, i) => (
+            <div key={i} style={{ padding: "6px 12px", borderRadius: 10, background: d.positive ? "rgba(100,255,100,0.06)" : "rgba(255,100,100,0.06)", border: `1px solid ${d.positive ? "rgba(100,255,100,0.15)" : "rgba(255,100,100,0.15)"}` }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: d.positive ? "#6CFF6C" : "#FF6C6C", fontFamily: C.mono }}>{d.positive ? "↑" : "↓"} {d.diff}</span>
+              <span style={{ fontSize: 10, color: C.dim, marginLeft: 4 }}>{d.label}</span>
+            </div>
+          ))}
+          <div style={{ padding: "6px 12px", borderRadius: 10, background: "rgba(255,255,255,0.03)" }}>
+            <span style={{ fontSize: 10, color: C.dim }}>vs last week</span>
+          </div>
+        </div>
+      )}
+
+      {/* Workouts by day — collapsible */}
+      {weekWorkouts.length === 0 && (
+        <div style={{ textAlign: "center", paddingTop: 30, marginBottom: 22 }}>
+          <div style={{ fontSize: 42, marginBottom: 12 }}>🏋️</div>
+          <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No Workouts Yet This Week</div>
+          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Start a workout and your weekly breakdown will appear here.</div>
+        </div>
+      )}
+
+      {Object.entries(dayGroups).map(([day, dayWorkouts]) => (
+        <div key={day} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>{day}</div>
+          {dayWorkouts.map((wo, wi) => {
+            const woSets = setsByWorkout[wo.id] || {};
+            const startTime = new Date(wo.started_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+            const isOpen = !!expandedWorkouts[wo.id];
+            return (
+              <div key={wi} style={{ background: C.card, borderRadius: 16, marginBottom: 8, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                {/* Collapsed summary row */}
+                <div onClick={() => toggleWorkout(wo.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: C.font }}>
+                      {wo.title || "Workout"} <span style={{ fontSize: 11, color: C.dim, fontWeight: 400 }}>{startTime}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{Math.round((wo.duration_secs || 0) / 60)} min · {Math.round(wo.total_volume_kg || 0).toLocaleString()} kg</div>
+                  </div>
+                  <span style={{ fontSize: 14, color: C.dim, transition: "transform .2s", transform: isOpen ? "rotate(90deg)" : "none", flexShrink: 0, marginLeft: 8 }}>→</span>
+                </div>
+
+                {/* Expanded detail */}
+                {isOpen && (
+                  <div style={{ padding: "0 16px 14px" }}>
+                    {wo.notes && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", fontStyle: "italic", marginBottom: 10, paddingLeft: 2 }}>"{wo.notes}"</div>}
+                    {loadingSets ? (
+                      <div style={{ fontSize: 12, color: C.dim, padding: "4px 0" }}>Loading sets...</div>
+                    ) : Object.keys(woSets).length === 0 ? (
+                      <div style={{ fontSize: 12, color: C.dim, padding: "4px 0" }}>No set data available</div>
+                    ) : (
+                      Object.entries(woSets).map(([exName, exSets], ei) => {
+                        const hasPR = prByWorkout[wo.id]?.has(exName);
+                        const rpesForEx = exSets.filter(s => s.rpe).map(s => s.rpe);
+                        const avgRPE = rpesForEx.length > 0 ? (rpesForEx.reduce((a, b) => a + b, 0) / rpesForEx.length).toFixed(1) : null;
+                        const bestSet = exSets.reduce((best, s) => ((s.weight_kg || 0) * (s.reps || 0) > (best.weight_kg || 0) * (best.reps || 0) ? s : best), exSets[0]);
+                        return (
+                          <div key={ei} style={{ marginBottom: ei < Object.keys(woSets).length - 1 ? 10 : 0 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" }}>{exName}</span>
+                              {hasPR && <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(255,220,50,0.15)", color: "#FFD700", fontFamily: C.mono, letterSpacing: .5 }}>PR</span>}
+                              {avgRPE && <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(164,123,255,0.12)", color: C.ai, fontFamily: C.mono }}>RPE {avgRPE}</span>}
+                            </div>
+                            {exSets.map((s, si) => {
+                              const isBest = s === bestSet && exSets.length > 1;
+                              return (
+                                <div key={si} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8, marginBottom: 2 }}>
+                                  <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, width: 40 }}>Set {s.set_number || si + 1}</span>
+                                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", fontFamily: C.mono }}>{s.weight_kg}kg × {s.reps}{s.rpe ? ` @ RPE ${s.rpe}` : ""}</span>
+                                  {isBest && <span style={{ fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: `${C.accent}18`, color: C.accent, fontFamily: C.mono }}>Best</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* AI Analysis */}
+      <div style={{ marginBottom: 22 }}>
+        {!aiInsight && (
+          <button onClick={handleAIAnalysis} disabled={aiLoading} style={{
+            width: "100%", padding: "14px 16px", borderRadius: 16, cursor: aiLoading ? "wait" : "pointer",
+            border: `1px solid ${C.ai}30`, background: `${C.ai}0A`, display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🧠</div>
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{aiLoading ? "Analyzing..." : "Get AI Analysis"}</div>
+              <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>Uses 1 AI query</div>
+            </div>
+            {aiLoading && <div style={{ width: 16, height: 16, border: `2px solid ${C.ai}40`, borderTopColor: C.ai, borderRadius: "50%", animation: "spin 1s linear infinite" }} />}
+          </button>
+        )}
+        {aiInsight && (
+          <div style={{ padding: "16px", borderRadius: 16, background: `${C.ai}0A`, border: `1px solid ${C.ai}25` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 14 }}>🧠</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.ai, fontFamily: C.font }}>AI Analysis</span>
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{aiInsight}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Training Insights — grouped by type, collapsible */}
+      {insights.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Insights</div>
+          {Object.entries(insightsByType).map(([type, items]) => {
+            const ic = insightColors[type] || insightColors.info;
+            const label = insightTypeLabels[type] || type;
+            // Single insight of this type: show directly
+            if (items.length === 1) {
+              const ins = items[0];
+              return (
+                <div key={type} style={{ padding: "12px 14px", borderRadius: 14, background: ic.bg, border: `1px solid ${ic.border}`, marginBottom: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14 }}>{ins.icon}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: ic.color, fontFamily: C.font }}>{ins.title}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.5, paddingLeft: 22 }}>{ins.body}</div>
+                </div>
+              );
+            }
+            // Multiple insights of this type: collapsible group
+            const isOpen = !!expandedInsightTypes[type];
+            return (
+              <div key={type} style={{ borderRadius: 14, background: ic.bg, border: `1px solid ${ic.border}`, marginBottom: 8, overflow: "hidden" }}>
+                <div onClick={() => toggleInsightType(type)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", cursor: "pointer" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>{items[0].icon}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: ic.color, fontFamily: C.font }}>{label}</span>
+                    <span style={{ fontSize: 11, color: ic.color, opacity: 0.7, fontFamily: C.mono }}>{items.length}</span>
+                  </div>
+                  <span style={{ fontSize: 12, color: ic.color, transition: "transform .2s", transform: isOpen ? "rotate(90deg)" : "none" }}>→</span>
+                </div>
+                {isOpen && (
+                  <div style={{ padding: "0 14px 10px" }}>
+                    {items.map((ins, i) => (
+                      <div key={i} style={{ marginBottom: i < items.length - 1 ? 8 : 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "rgba(255,255,255,0.75)", marginBottom: 2 }}>{ins.title}</div>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.5 }}>{ins.body}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══ DAY DETAIL ═══ */
+function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
+  const [m, setM] = useState(false);
+  const [sets, setSets] = useState([]);
+  const [loadingSets, setLoadingSets] = useState(true);
+  const [expandedWorkouts, setExpandedWorkouts] = useState({});
+
+  const toggleWorkout = (id) => setExpandedWorkouts(p => ({ ...p, [id]: !p[id] }));
+
+  // Filter workouts for this specific day
+  const dayStart = new Date(date);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  const dayWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= dayStart && d < dayEnd; });
+
+  useEffect(() => { setM(true); }, []);
+
+  useEffect(() => {
+    (async () => {
+      const ids = dayWorkouts.map(w => w.id).filter(Boolean);
+      if (ids.length === 0) { setLoadingSets(false); return; }
+      try { setSets(await getWorkoutSets(ids)); } catch (e) { console.error("Failed to load sets:", e); }
+      setLoadingSets(false);
+    })();
+  }, [date]);
+
+  const setsByWorkout = {};
+  sets.forEach(s => {
+    if (!setsByWorkout[s.workout_id]) setsByWorkout[s.workout_id] = {};
+    if (!setsByWorkout[s.workout_id][s.exercise_name]) setsByWorkout[s.workout_id][s.exercise_name] = [];
+    setsByWorkout[s.workout_id][s.exercise_name].push(s);
+  });
+
+  const prByWorkout = {};
+  prs.forEach(p => { if (p.workout_id) { if (!prByWorkout[p.workout_id]) prByWorkout[p.workout_id] = new Set(); prByWorkout[p.workout_id].add(p.exercise_name); } });
+
+  const totalVolume = dayWorkouts.reduce((sum, wo) => sum + (wo.total_volume_kg || 0), 0);
+  const totalTime = dayWorkouts.reduce((sum, wo) => sum + (wo.duration_secs || 0), 0);
+  const dayLabel = dayStart.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+
+  return (
+    <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transform: m ? "none" : "translateY(10px)", transition: "all .5s cubic-bezier(.22,1,.36,1)" }}>
+      <div style={{ padding: "14px 0 6px" }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+      </div>
+      <div style={{ padding: "8px 0 18px" }}>
+        <div style={{ fontSize: 12, color: C.accent, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{dayLabel}</div>
+        <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Day Breakdown</div>
+        <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{dayWorkouts.length} workout{dayWorkouts.length !== 1 ? "s" : ""} · {Math.round(totalTime / 60)} min · {Math.round(totalVolume).toLocaleString()} kg</div>
+      </div>
+
+      {dayWorkouts.map((wo, wi) => {
+        const woSets = setsByWorkout[wo.id] || {};
+        const startTime = new Date(wo.started_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+        const isOpen = !!expandedWorkouts[wo.id];
+        return (
+          <div key={wi} style={{ background: C.card, borderRadius: 16, marginBottom: 8, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+            <div onClick={() => toggleWorkout(wo.id)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", cursor: "pointer" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: C.font }}>
+                  {wo.title || "Workout"} <span style={{ fontSize: 11, color: C.dim, fontWeight: 400 }}>{startTime}</span>
+                </div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{Math.round((wo.duration_secs || 0) / 60)} min · {Math.round(wo.total_volume_kg || 0).toLocaleString()} kg</div>
+              </div>
+              <span style={{ fontSize: 14, color: C.dim, transition: "transform .2s", transform: isOpen ? "rotate(90deg)" : "none", flexShrink: 0, marginLeft: 8 }}>→</span>
+            </div>
+            {isOpen && (
+              <div style={{ padding: "0 16px 14px" }}>
+                {wo.notes && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", fontStyle: "italic", marginBottom: 10, paddingLeft: 2 }}>"{wo.notes}"</div>}
+                {loadingSets ? (
+                  <div style={{ fontSize: 12, color: C.dim, padding: "4px 0" }}>Loading sets...</div>
+                ) : Object.keys(woSets).length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.dim, padding: "4px 0" }}>No set data available</div>
+                ) : (
+                  Object.entries(woSets).map(([exName, exSets], ei) => {
+                    const hasPR = prByWorkout[wo.id]?.has(exName);
+                    const rpesForEx = exSets.filter(s => s.rpe).map(s => s.rpe);
+                    const avgRPE = rpesForEx.length > 0 ? (rpesForEx.reduce((a, b) => a + b, 0) / rpesForEx.length).toFixed(1) : null;
+                    const bestSet = exSets.reduce((best, s) => ((s.weight_kg || 0) * (s.reps || 0) > (best.weight_kg || 0) * (best.reps || 0) ? s : best), exSets[0]);
+                    return (
+                      <div key={ei} style={{ marginBottom: ei < Object.keys(woSets).length - 1 ? 10 : 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "rgba(255,255,255,0.85)" }}>{exName}</span>
+                          {hasPR && <span style={{ fontSize: 8, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(255,220,50,0.15)", color: "#FFD700", fontFamily: C.mono, letterSpacing: .5 }}>PR</span>}
+                          {avgRPE && <span style={{ fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(164,123,255,0.12)", color: C.ai, fontFamily: C.mono }}>RPE {avgRPE}</span>}
+                        </div>
+                        {exSets.map((s, si) => {
+                          const isBest = s === bestSet && exSets.length > 1;
+                          return (
+                            <div key={si} style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8, marginBottom: 2 }}>
+                              <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, width: 40 }}>Set {s.set_number || si + 1}</span>
+                              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", fontFamily: C.mono }}>{s.weight_kg}kg × {s.reps}{s.rpe ? ` @ RPE ${s.rpe}` : ""}</span>
+                              {isBest && <span style={{ fontSize: 8, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: `${C.accent}18`, color: C.accent, fontFamily: C.mono }}>Best</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ═══ PERSONAL RECORDS ═══ */
 function PRScreen({ onBack, prs = [] }) {
   const [m, setM] = useState(false);
@@ -1448,6 +1921,7 @@ export default function GAIns() {
   const [syncing, setSyncing] = useState(false);
   const [screen, setScreen] = useState("home");
   const [tab, setTab] = useState("home");
+  const [dayDetailDate, setDayDetailDate] = useState(null);
   const [tpl, setTpl] = useState(null);
   const [plan, setPlan] = useState("free");
   const [queriesUsed, setQueriesUsed] = useState(0);
@@ -1709,17 +2183,19 @@ export default function GAIns() {
       )}
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onDayClick={(d) => { setDayDetailDate(d); nav("dayDetail"); }} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); nav("workout"); }} onBack={() => nav("home")} />}
         {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={(prs) => { setPendingSync(getPendingCount()); refreshAppData(); if (prs && prs.length > 0) { setCelebrationPRs(prs); } else { nav("home"); } }} onBack={() => nav("home")} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
+        {screen === "dayDetail" && dayDetailDate && <DayDetailScreen date={dayDetailDate} workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
         {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
         {screen === "notifications" && <NotificationScreen onBack={() => nav("home")} />}
       </div>
-      {!["workout", "pricing", "prs", "notifications"].includes(screen) && (
+      {!["workout", "pricing", "prs", "notifications", "weekDetail", "dayDetail"].includes(screen) && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "calc(72px + env(safe-area-inset-bottom, 0px))", background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "flex-start", paddingTop: 10 }}>
           {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 16px" }}><span style={{ fontSize: 20, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>
