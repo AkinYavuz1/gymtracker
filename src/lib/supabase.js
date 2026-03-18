@@ -168,6 +168,7 @@ export async function getPersonalRecords() {
   const { data, error } = await supabase
     .from('personal_records')
     .select('*')
+    .eq('is_active', true)
     .order('estimated_1rm', { ascending: false });
   if (error) console.error('getPersonalRecords error:', error);
   return data || [];
@@ -346,20 +347,22 @@ export async function getActiveEnrollment() {
   return data;
 }
 
-export async function enrollInProgram(programId, settings = {}) {
+export async function enrollInProgram(programId, settings = {}, startDate = null) {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
+  const row = {
+    user_id: session.user.id,
+    program_id: programId,
+    settings,
+    status: 'active',
+    current_week: 1,
+    current_day: 0,
+    checkin_frequency: settings.checkin_frequency || 'weekly',
+  };
+  if (startDate) row.started_at = startDate;
   const { data, error } = await supabase
     .from('program_enrollments')
-    .insert({
-      user_id: session.user.id,
-      program_id: programId,
-      settings,
-      status: 'active',
-      current_week: 1,
-      current_day: 0,
-      checkin_frequency: settings.checkin_frequency || 'weekly',
-    })
+    .insert(row)
     .select()
     .single();
   if (error) throw error;
@@ -374,16 +377,23 @@ export async function abandonProgram(enrollmentId) {
   if (error) throw error;
 }
 
-export async function getScheduledWorkouts(startDate, endDate) {
+export async function getScheduledWorkouts(startDate, endDate, enrollmentId, weekNumber) {
   const session = await getSession();
   if (!session?.user) return [];
-  const { data, error } = await supabase
+  let query = supabase
     .from('scheduled_workouts')
     .select('*, program_days(name, muscle_groups)')
     .eq('user_id', session.user.id)
-    .gte('scheduled_date', startDate)
-    .lte('scheduled_date', endDate)
     .order('scheduled_date');
+  if (enrollmentId) {
+    query = query.eq('enrollment_id', enrollmentId);
+  }
+  if (weekNumber) {
+    query = query.eq('week_number', weekNumber);
+  } else {
+    query = query.gte('scheduled_date', startDate).lte('scheduled_date', endDate);
+  }
+  const { data, error } = await query;
   if (error) console.error('getScheduledWorkouts error:', error);
   return data || [];
 }
@@ -447,6 +457,12 @@ export async function generateSchedule(enrollmentId, programDays, startDate, set
     }
   }
 
+  // Mark past days as skipped (for "This week" start option)
+  const today = new Date().toISOString().split('T')[0];
+  rows.forEach(r => {
+    if (r.scheduled_date < today) r.status = 'skipped';
+  });
+
   if (rows.length > 0) {
     const { error } = await supabase
       .from('scheduled_workouts')
@@ -470,6 +486,76 @@ export async function savePumpRating(scheduledWorkoutId, workoutId, rating) {
       overall_rating: rating,
     });
   if (error) throw error;
+}
+
+export async function saveDifficultyRating(scheduledWorkoutId, workoutId, rating) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('workout_feedback')
+    .insert({
+      user_id: session.user.id,
+      scheduled_workout_id: scheduledWorkoutId,
+      workout_id: workoutId,
+      feedback_type: 'difficulty',
+      overall_rating: rating,
+    });
+  if (error) throw error;
+}
+
+export async function applyDifficultyToFutureWorkouts(scheduledWorkoutId, difficultyRating) {
+  // Only adjust for too-easy (1-3) or too-hard (9-10)
+  if (difficultyRating > 3 && difficultyRating < 9) return;
+
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+
+  // Get current workout's context
+  const { data: current, error: fetchErr } = await supabase
+    .from('scheduled_workouts')
+    .select('program_day_id, enrollment_id, week_number')
+    .eq('id', scheduledWorkoutId)
+    .single();
+  if (fetchErr || !current) return;
+
+  // Get future scheduled workouts with same program_day_id (exclude deload week 5)
+  const { data: futureWorkouts, error: futureErr } = await supabase
+    .from('scheduled_workouts')
+    .select('id, prescribed_exercises, week_number')
+    .eq('enrollment_id', current.enrollment_id)
+    .eq('program_day_id', current.program_day_id)
+    .eq('status', 'scheduled')
+    .gt('week_number', current.week_number)
+    .neq('week_number', 5);
+  if (futureErr || !futureWorkouts?.length) return;
+
+  const roundToQuarter = (v) => Math.round(v * 4) / 4;
+  const isEasy = difficultyRating <= 3;
+  const weightMult = isEasy ? 1.025 : 0.95;
+
+  for (const fw of futureWorkouts) {
+    const exercises = (fw.prescribed_exercises || []).map(ex => {
+      const updated = { ...ex };
+      // Adjust weight
+      if (updated.weight) {
+        updated.weight = roundToQuarter(updated.weight * weightMult);
+      }
+      // Adjust sets for compounds
+      if (updated.is_compound) {
+        if (isEasy && (updated.sets || 3) < 5) {
+          updated.sets = (updated.sets || 3) + 1;
+        } else if (!isEasy && (updated.sets || 3) > 2) {
+          updated.sets = (updated.sets || 3) - 1;
+        }
+      }
+      return updated;
+    });
+
+    await supabase
+      .from('scheduled_workouts')
+      .update({ prescribed_exercises: exercises })
+      .eq('id', fw.id);
+  }
 }
 
 export async function saveSorenessRatings(scheduledWorkoutId, muscleRatings) {
@@ -527,4 +613,96 @@ export async function getProgressCheckins(enrollmentId) {
   const { data, error } = await query;
   if (error) console.error('getProgressCheckins error:', error);
   return data || [];
+}
+
+export async function applyCoachDiffToSchedule(enrollmentId, currentWeek, changes) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+
+  const { data: futureWorkouts, error } = await supabase
+    .from('scheduled_workouts')
+    .select('id, prescribed_exercises, week_number')
+    .eq('enrollment_id', enrollmentId)
+    .eq('status', 'scheduled')
+    .gte('week_number', currentWeek);
+  if (error) throw error;
+  if (!futureWorkouts?.length) return 0;
+
+  const roundToQuarter = (v) => Math.round(v * 4) / 4;
+  let updatedCount = 0;
+
+  for (const fw of futureWorkouts) {
+    const exercises = (fw.prescribed_exercises || []).map(ex => {
+      const change = changes.find(c =>
+        c.exercise_name?.toLowerCase() === ex.exercise_name?.toLowerCase() &&
+        (c.week_from == null || fw.week_number >= c.week_from)
+      );
+      if (!change) return ex;
+      const updated = { ...ex };
+      if (change.delta_weight_kg) updated.weight = roundToQuarter((updated.weight || 0) + change.delta_weight_kg);
+      if (change.delta_sets) updated.sets = Math.max(1, (updated.sets || 3) + change.delta_sets);
+      if (change.delta_reps) updated.reps = Math.max(1, (updated.reps || 8) + change.delta_reps);
+      return updated;
+    });
+
+    const { error: updateErr } = await supabase
+      .from('scheduled_workouts')
+      .update({ prescribed_exercises: exercises })
+      .eq('id', fw.id);
+    if (!updateErr) updatedCount++;
+  }
+
+  return updatedCount;
+}
+
+export async function createUserProgram(programData) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+
+  const { data: program, error: progErr } = await supabase
+    .from('programs')
+    .insert({
+      user_id: session.user.id,
+      name: programData.name,
+      description: programData.description,
+      split_type: programData.split_type || 'custom',
+      days_per_week: programData.days_per_week || 3,
+      goal: programData.goal || 'general',
+      color: programData.color || '#A47BFF',
+      icon: programData.icon || '🤖',
+      slug: null,
+    })
+    .select()
+    .single();
+  if (progErr) throw progErr;
+
+  for (const day of (programData.days || [])) {
+    const { data: dayRow, error: dayErr } = await supabase
+      .from('program_days')
+      .insert({
+        program_id: program.id,
+        day_index: day.day_index,
+        name: day.name,
+        muscle_groups: day.muscle_groups || [],
+      })
+      .select()
+      .single();
+    if (dayErr) throw dayErr;
+
+    for (const ex of (day.exercises || [])) {
+      const { error: exErr } = await supabase
+        .from('program_day_exercises')
+        .insert({
+          program_day_id: dayRow.id,
+          exercise_name: ex.exercise_name,
+          base_sets: ex.base_sets || 3,
+          base_reps: ex.base_reps || 8,
+          is_compound: ex.is_compound ?? true,
+          sort_order: ex.sort_order || 0,
+        });
+      if (exErr) throw exErr;
+    }
+  }
+
+  return program;
 }

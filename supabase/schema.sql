@@ -157,7 +157,8 @@ CREATE TABLE public.personal_records (
     set_volume      DECIMAL(8,1),
     pr_type         TEXT NOT NULL DEFAULT '1rm' CHECK (pr_type IN ('1rm', 'volume')),
     achieved_at     TIMESTAMPTZ DEFAULT now(),
-    workout_id      UUID REFERENCES public.workouts(id) ON DELETE SET NULL
+    workout_id      UUID REFERENCES public.workouts(id) ON DELETE SET NULL,
+    is_active       BOOLEAN NOT NULL DEFAULT true
 );
 
 -- Auto-calculate estimated 1RM and set volume
@@ -492,7 +493,7 @@ CREATE TABLE public.programs (
     name            TEXT NOT NULL,
     slug            TEXT NOT NULL UNIQUE,
     description     TEXT,
-    split_type      TEXT NOT NULL CHECK (split_type IN ('ppl','upper_lower','full_body','bro_split')),
+    split_type      TEXT NOT NULL CHECK (split_type IN ('ppl','upper_lower','full_body','five_day_split')),
     days_per_week   INTEGER NOT NULL CHECK (days_per_week BETWEEN 2 AND 7),
     duration_weeks  INTEGER NOT NULL DEFAULT 5,
     goal            TEXT NOT NULL CHECK (goal IN ('hypertrophy','strength','endurance','general')),
@@ -561,7 +562,7 @@ CREATE TABLE public.workout_feedback (
     user_id         UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     scheduled_workout_id UUID REFERENCES scheduled_workouts(id) ON DELETE SET NULL,
     workout_id      UUID REFERENCES workouts(id) ON DELETE SET NULL,
-    feedback_type   TEXT NOT NULL CHECK (feedback_type IN ('pump','soreness')),
+    feedback_type   TEXT NOT NULL CHECK (feedback_type IN ('pump','soreness','difficulty')),
     overall_rating  SMALLINT CHECK (overall_rating BETWEEN 1 AND 10),
     muscle_ratings  JSONB DEFAULT '{}',
     created_at      TIMESTAMPTZ DEFAULT now()
@@ -787,14 +788,14 @@ BEGIN
     (v_day_id, 'Lateral Raise', 3, 15, false, 4);
 END $$;
 
--- Bro Split — 5 days/week
+-- 5-Day Split — 5 days/week
 DO $$
 DECLARE
     v_prog_id UUID;
     v_day_id UUID;
 BEGIN
     INSERT INTO public.programs (name, slug, description, split_type, days_per_week, duration_weeks, goal, experience_min, color, icon)
-    VALUES ('Bro Split', 'bro-split', 'Classic 5-day bodybuilding split. One muscle group per day for maximum isolation and volume.', 'bro_split', 5, 5, 'hypertrophy', 'intermediate', '#A47BFF', '🏆')
+    VALUES ('5-Day Split', '5-day-split', 'Classic 5-day bodybuilding split. One muscle group per day for maximum isolation and volume.', 'five_day_split', 5, 5, 'hypertrophy', 'intermediate', '#A47BFF', '🏆')
     RETURNING id INTO v_prog_id;
 
     -- Chest
@@ -868,3 +869,32 @@ END $$;
 -- ALTER TABLE public.profiles ADD CONSTRAINT profiles_training_goal_check
 --   CHECK (training_goal IN ('hypertrophy','strength','endurance','general',
 --                            'fat_loss','muscle_gain','maintenance','performance'));
+
+-- ─── MIGRATION: AI-generated user programs ───
+-- Run in Supabase SQL Editor:
+ALTER TABLE public.programs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE;
+ALTER TABLE public.programs ALTER COLUMN slug DROP NOT NULL;
+ALTER TABLE public.programs DROP CONSTRAINT IF EXISTS programs_split_type_check;
+ALTER TABLE public.programs ADD CONSTRAINT programs_split_type_check
+  CHECK (split_type IN ('ppl','upper_lower','full_body','five_day_split','custom'));
+
+-- RLS: users can insert/read their own programs
+DROP POLICY IF EXISTS "Users insert own programs" ON public.programs;
+CREATE POLICY "Users insert own programs"
+  ON public.programs FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Authenticated users read programs" ON public.programs;
+CREATE POLICY "Authenticated users read programs"
+  ON public.programs FOR SELECT TO authenticated USING (user_id IS NULL OR user_id = auth.uid());
+
+-- RLS: users can insert days/exercises for their own programs
+DROP POLICY IF EXISTS "Users insert own program days" ON public.program_days;
+CREATE POLICY "Users insert own program days"
+  ON public.program_days FOR INSERT TO authenticated WITH CHECK (
+    program_id IN (SELECT id FROM programs WHERE user_id = auth.uid()));
+DROP POLICY IF EXISTS "Users insert own program day exercises" ON public.program_day_exercises;
+CREATE POLICY "Users insert own program day exercises"
+  ON public.program_day_exercises FOR INSERT TO authenticated WITH CHECK (
+    program_day_id IN (
+      SELECT pd.id FROM program_days pd
+      JOIN programs p ON p.id = pd.program_id
+      WHERE p.user_id = auth.uid()));

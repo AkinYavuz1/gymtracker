@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram } from "./lib/supabase";
 import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
@@ -145,28 +145,40 @@ function PricingScreen({ currentPlan, onSelect, onBack }) {
 }
 
 /* ═══ AI COACH ═══ */
-function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
+function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing, activeEnrollment, onNavigate, onProgramCreated }) {
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeCat, setActiveCat] = useState("Analyze");
   const [showPrompts, setShowPrompts] = useState(true);
   const [totalCost, setTotalCost] = useState(0);
   const scrollRef = useRef(null);
+  const [pendingMsgIdx, setPendingMsgIdx] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
 
   const planData = PLANS[plan];
   const remaining = Math.max(0, planData.queries - queriesUsed);
   const limitReached = remaining <= 0;
 
   useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs, loading]);
+  useEffect(() => { if (!successMsg) return; const t = setTimeout(() => setSuccessMsg(null), 4000); return () => clearTimeout(t); }, [successMsg]);
 
   const send = async (prompt, label) => {
     if (limitReached) return;
+    setPendingMsgIdx(null);
+    setActionError(null);
+    setSuccessMsg(null);
     setShowPrompts(false);
     setMsgs(prev => [...prev, { role: "user", content: label }]);
     setLoading(true);
     try {
       const result = await callCoachAPI(prompt, label);
-      setMsgs(prev => [...prev, { role: "assistant", content: result.text }]);
+      setMsgs(prev => {
+        const next = [...prev, { role: "assistant", content: result.text }];
+        setPendingMsgIdx(next.length - 1);
+        return next;
+      });
       onUseQuery();
       setTotalCost(prev => prev + (result.cost_usd || 0));
     } catch (e) {
@@ -175,7 +187,64 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
     setLoading(false);
   };
 
+  const extractJSON = (text) => {
+    try {
+      const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenced) return JSON.parse(fenced[1].trim());
+      const bare = text.match(/\{[\s\S]*\}/);
+      if (bare) return JSON.parse(bare[0]);
+    } catch {}
+    return null;
+  };
+
+  const handleAccept = async () => {
+    setActionLoading(true);
+    setActionError(null);
+    const lastCoachMsg = msgs[pendingMsgIdx]?.content || "";
+    try {
+      if (activeEnrollment) {
+        const diffPrompt = `Based on your previous advice: "${lastCoachMsg.slice(0, 400)}"
+Return ONLY a JSON object (no explanation) in this exact format:
+{"action":"modify_program","changes":[{"exercise_name":"Exercise Name","week_from":${activeEnrollment.current_week},"delta_weight_kg":0,"delta_sets":0,"delta_reps":0}]}
+Include only exercises that need changes. Use negative numbers to decrease.`;
+        const result = await callCoachAPI(diffPrompt, "Apply suggestion");
+        onUseQuery();
+        setTotalCost(prev => prev + (result.cost_usd || 0));
+        const parsed = extractJSON(result.text);
+        if (!parsed?.changes?.length) throw new Error("Couldn't parse changes from AI response. Try again.");
+        const count = await applyCoachDiffToSchedule(activeEnrollment.id, activeEnrollment.current_week, parsed.changes);
+        setSuccessMsg(count > 0 ? `Updated ${count} upcoming workout${count !== 1 ? "s" : ""}` : "No upcoming workouts to update");
+        setPendingMsgIdx(null);
+      } else {
+        const createPrompt = `Based on your previous advice: "${lastCoachMsg.slice(0, 400)}"
+Create a structured workout program. Return ONLY a JSON object (no explanation) in this exact format:
+{"action":"create_program","name":"Program Name","description":"Brief description","split_type":"full_body","days_per_week":3,"goal":"general","color":"#A47BFF","icon":"🤖","days":[{"day_index":0,"name":"Day A","muscle_groups":["Chest","Shoulders"],"exercises":[{"exercise_name":"Bench Press","base_sets":3,"base_reps":8,"is_compound":true,"sort_order":0}]}]}
+split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
+        const result = await callCoachAPI(createPrompt, "Create program");
+        onUseQuery();
+        setTotalCost(prev => prev + (result.cost_usd || 0));
+        const parsed = extractJSON(result.text);
+        if (!parsed?.name || !parsed?.days?.length) throw new Error("Couldn't parse program from AI response. Try again.");
+        const newProgram = await createUserProgram(parsed);
+        setSuccessMsg("Program created! Navigating...");
+        setPendingMsgIdx(null);
+        if (onProgramCreated) onProgramCreated(newProgram.id);
+        setTimeout(() => { if (onNavigate) onNavigate("program"); }, 1200);
+      }
+    } catch (e) {
+      setActionError(e.message || "Something went wrong. Try again.");
+    }
+    setActionLoading(false);
+  };
+
+  const handleReject = () => {
+    setPendingMsgIdx(null);
+    setActionError(null);
+    setMsgs(prev => [...prev, { role: "user", content: "No thanks" }]);
+  };
+
   const catKeys = Object.keys(AI_PROMPTS);
+  const lastMsgIsAssistant = msgs.length > 0 && msgs[msgs.length - 1]?.role === "assistant";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -188,7 +257,7 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
             </div>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Coach</div>
           </div>
-          {msgs.length > 0 && <button onClick={() => { setMsgs([]); setShowPrompts(true); }} style={{ background: `${C.ai}15`, border: `1px solid ${C.ai}30`, borderRadius: 10, padding: "6px 12px", color: C.ai, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>New</button>}
+          {msgs.length > 0 && <button onClick={() => { setMsgs([]); setShowPrompts(true); setPendingMsgIdx(null); setActionError(null); setSuccessMsg(null); }} style={{ background: `${C.ai}15`, border: `1px solid ${C.ai}30`, borderRadius: 10, padding: "6px 12px", color: C.ai, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>New</button>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: "8px 12px", borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
           <div style={{ flex: 1 }}>
@@ -244,7 +313,33 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing }) {
 
         {loading && <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}><div style={{ width: 16, height: 16, borderRadius: 5, background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>🧠</div><div style={{ display: "flex", gap: 4, padding: "10px 14px", background: C.card, borderRadius: 14, border: `1px solid ${C.border}` }}>{[0, 1, 2].map(i => (<div key={i} style={{ width: 7, height: 7, borderRadius: 4, background: C.ai, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />))}</div></div>}
 
-        {msgs.length > 0 && !loading && msgs[msgs.length - 1]?.role === "assistant" && !limitReached && (
+        {successMsg && (
+          <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 8px" }}>
+            <div style={{ padding: "7px 16px", borderRadius: 20, background: "rgba(52,199,89,0.15)", border: "1px solid rgba(52,199,89,0.3)", color: "#34C759", fontSize: 12, fontWeight: 600, fontFamily: C.font }}>✓ {successMsg}</div>
+          </div>
+        )}
+
+        {pendingMsgIdx !== null && !loading && !limitReached && (
+          <div style={{ padding: "4px 0 12px" }}>
+            {actionError && <div style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(255,107,60,0.1)", border: "1px solid rgba(255,107,60,0.2)", color: "#FF6B3C", fontSize: 12, marginBottom: 8, fontFamily: C.font }}>{actionError}</div>}
+            {activeEnrollment ? (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={handleAccept} disabled={actionLoading} style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: `${C.ai}20`, border: `1px solid ${C.ai}40`, color: C.ai, fontSize: 13, fontWeight: 700, cursor: actionLoading ? "not-allowed" : "pointer", fontFamily: C.font, opacity: actionLoading ? 0.6 : 1 }}>
+                  {actionLoading ? "Applying..." : "Yes, apply this"}
+                </button>
+                <button onClick={handleReject} disabled={actionLoading} style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: C.dim, fontSize: 13, fontWeight: 600, cursor: actionLoading ? "not-allowed" : "pointer", fontFamily: C.font, opacity: actionLoading ? 0.6 : 1 }}>
+                  No thanks
+                </button>
+              </div>
+            ) : (
+              <button onClick={handleAccept} disabled={actionLoading} style={{ width: "100%", padding: "12px 16px", borderRadius: 14, background: `linear-gradient(135deg, ${C.ai}25, #7B4CFF25)`, border: `1px solid ${C.ai}40`, color: C.ai, fontSize: 13, fontWeight: 700, cursor: actionLoading ? "not-allowed" : "pointer", fontFamily: C.font, opacity: actionLoading ? 0.6 : 1, textAlign: "center" }}>
+                {actionLoading ? "Creating program..." : "Create new program with this advice"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {pendingMsgIdx === null && lastMsgIsAssistant && !loading && !limitReached && (
           <div style={{ padding: "6px 0 12px" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
               {[{ label: "Go deeper", prompt: "Expand with more actionable steps." }, { label: "Make a plan", prompt: "Turn that into a day-by-day plan." }, { label: "Why?", prompt: "Explain the science behind this." }, { label: "What else?", prompt: "Most important change I should make?" }].map((f, i) => (
@@ -1143,8 +1238,8 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
       {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
       {exs.map((ex, ei) => (
         <div key={ei} style={{ background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><button onClick={() => setDemoIdx(demoIdx === ei ? null : ei)} style={{ width: 32, height: 32, borderRadius: 10, border: `1px solid ${demoIdx === ei ? color + '40' : C.border}`, background: demoIdx === ei ? `${color}12` : 'rgba(255,255,255,0.03)', color: demoIdx === ei ? color : C.dim, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} title="Show exercise demo">?</button><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div>{ex.rir !== undefined && <span style={{ padding: "3px 7px", borderRadius: 6, background: `${color}15`, border: `1px solid ${color}30`, fontSize: 9, fontWeight: 700, color, fontFamily: C.mono }}>RIR {ex.rir}</span>}</div></div><button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button></div>
-          {demoIdx === ei && <div style={{ padding: "0 16px 12px" }}><ExerciseAnimation name={ex.name} color={color} height={120} /></div>}
+          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div>{ex.rir !== undefined && <span style={{ padding: "3px 7px", borderRadius: 6, background: `${color}15`, border: `1px solid ${color}30`, fontSize: 9, fontWeight: 700, color, fontFamily: C.mono }}>RIR {ex.rir}</span>}</div></div><button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button></div>
+          {/* Exercise demo hidden until video assets are ready */}
           <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "0 16px 4px", fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase" }}><div>Set</div><div>Kg</div><div>Reps</div><div style={{ textAlign: "center" }}>Log</div></div>
           {ex.setsData.map((s, si) => (
             <div key={si} style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "9px 16px", alignItems: "center", background: s.done ? `${color}06` : "transparent", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
@@ -1821,11 +1916,53 @@ function PRScreen({ onBack, prs = [] }) {
 
   useEffect(() => { setM(true); }, []);
 
-  const colors = ["#DFFF3C", "#3CFFF0", "#FF6B3C", "#B47CFF", "#47B8FF"];
+  const GROUP_ORDER = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Other"];
+  const GROUP_COLORS = { Chest: "#FF6B3C", Back: "#3CFFF0", Legs: "#A78BFA", Shoulders: "#47B8FF", Arms: "#F472B6", Other: "#9B98C4" };
+  const BIG3 = ["Back Squat", "Bench Press", "Deadlift"];
 
-  const strengthPRs = prs.filter(p => (p.pr_type || "1rm") === "1rm");
-  const volumePRs = prs.filter(p => p.pr_type === "volume");
-  const filtered = tab === "1rm" ? strengthPRs : volumePRs;
+  const filtered = prs
+    .filter(p => (p.pr_type || "1rm") === tab)
+    .sort((a, b) => new Date(b.achieved_at) - new Date(a.achieved_at));
+
+  // Build sections: Big 3 pinned first, then grouped by muscle
+  const big3PRs = BIG3.map(name => filtered.find(p => p.exercise_name === name)).filter(Boolean);
+  const restPRs = filtered.filter(p => !BIG3.includes(p.exercise_name));
+
+  const grouped = {};
+  restPRs.forEach(p => {
+    const g = getMuscleGroup(p.exercise_name);
+    if (!grouped[g]) grouped[g] = [];
+    grouped[g].push(p);
+  });
+  const groupSections = GROUP_ORDER.filter(g => grouped[g]?.length > 0).map(g => ({ group: g, prs: grouped[g] }));
+
+  const PRCard = ({ p, i, accentColor }) => (
+    <div style={{ background: C.card, borderRadius: 16, padding: "14px 16px", marginBottom: 8, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(10px)", transition: `all .4s cubic-bezier(.22,1,.36,1) ${i * .04}s` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: C.font }}>{p.exercise_name}</div>
+          <div style={{ fontSize: 11, color: C.dim, marginTop: 2, fontFamily: C.mono }}>
+            {p.reps} reps @ {p.weight_kg}kg · {new Date(p.achieved_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          {tab === "1rm" ? (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 800, color: accentColor, fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono }}>e1RM</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 20, fontWeight: 800, color: accentColor, fontFamily: C.font }}>{Math.round(p.set_volume || p.weight_kg * p.reps).toLocaleString()}kg</div>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono }}>vol</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  let cardIdx = 0;
 
   return (
     <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
@@ -1836,17 +1973,20 @@ function PRScreen({ onBack, prs = [] }) {
         <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Lifting</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Personal Records</div>
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+
+      {/* Tab toggle */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
         {[{ key: "1rm", label: "1 Rep Max" }, { key: "volume", label: "Volume" }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             flex: 1, padding: "10px 0", borderRadius: 12, fontSize: 13, fontWeight: 700, fontFamily: C.font, cursor: "pointer",
             background: tab === t.key ? C.accent : C.card,
-            color: tab === t.key ? "#000" : "#fff",
+            color: tab === t.key ? C.bg : "#fff",
             border: tab === t.key ? "none" : `1px solid ${C.border}`,
             transition: "all .2s"
           }}>{t.label}</button>
         ))}
       </div>
+
       {filtered.length === 0 && (
         <div style={{ textAlign: "center", paddingTop: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>{tab === "1rm" ? "🏋️" : "📊"}</div>
@@ -1854,30 +1994,23 @@ function PRScreen({ onBack, prs = [] }) {
           <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete workouts to start tracking your {tab === "1rm" ? "strength" : "volume"} records.</div>
         </div>
       )}
-      {filtered.map((p, i) => (
-        <div key={i} style={{ background: C.card, borderRadius: 18, padding: "16px", marginBottom: 10, border: `1px solid ${C.border}`, opacity: m ? 1 : 0, transform: m ? "none" : "translateY(12px)", transition: `all .45s cubic-bezier(.22,1,.36,1) ${i * .06}s` }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 10, height: 10, borderRadius: 5, background: colors[i % colors.length] }} />
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{p.exercise_name}</div>
-                <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{p.reps} reps @ {p.weight_kg}kg</div>
-              </div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              {tab === "1rm" ? (
-                <>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</div>
-                  <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>e1RM</div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: colors[i % colors.length], fontFamily: C.font }}>{Math.round(p.set_volume || p.weight_kg * p.reps).toLocaleString()}kg</div>
-                  <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>vol</div>
-                </>
-              )}
-            </div>
+
+      {/* Big 3 */}
+      {big3PRs.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>The Big 3</div>
+          {big3PRs.map(p => <PRCard key={p.exercise_name} p={p} i={cardIdx++} accentColor={C.accent} />)}
+        </div>
+      )}
+
+      {/* Grouped sections */}
+      {groupSections.map(({ group, prs: gPRs }) => (
+        <div key={group} style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 4, background: GROUP_COLORS[group] }} />
+            <div style={{ fontSize: 11, color: GROUP_COLORS[group], fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{group}</div>
           </div>
+          {gPRs.map(p => <PRCard key={p.exercise_name} p={p} i={cardIdx++} accentColor={GROUP_COLORS[group]} />)}
         </div>
       ))}
     </div>
@@ -2403,7 +2536,18 @@ function ProgressCheckinModal({ profile, enrollmentId, onSubmit, onClose }) {
 /* ═══ PROGRAM ONBOARDING ═══ */
 function ProgramOnboardingScreen({ program, profile, prs, onEnroll, onBack }) {
   const [step, setStep] = useState(0);
-  const [trainingDays, setTrainingDays] = useState([1, 2, 3, 4, 5]); // Mon-Fri default
+  const [trainingDays, setTrainingDays] = useState(() => {
+    // Default day selections keyed by days_per_week
+    const defaults = {
+      2: [1, 4],           // Mon, Thu
+      3: [1, 3, 5],        // Mon, Wed, Fri
+      4: [1, 2, 4, 5],     // Mon, Tue, Thu, Fri
+      5: [1, 2, 3, 4, 5],  // Mon–Fri
+      6: [1, 2, 3, 4, 5, 6], // Mon–Sat
+      7: [0, 1, 2, 3, 4, 5, 6],
+    };
+    return defaults[program?.days_per_week] || defaults[3];
+  });
   const [startingWeights, setStartingWeights] = useState({});
   const [checkinFreq, setCheckinFreq] = useState("weekly");
   const [startOption, setStartOption] = useState("next_monday");
@@ -2692,7 +2836,7 @@ function ProgramOnboardingScreen({ program, profile, prs, onEnroll, onBack }) {
 }
 
 /* ═══ PROGRAM SCREEN ═══ */
-function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav }) {
+function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight }) {
   const [weekView, setWeekView] = useState(enrollment?.current_week || 1);
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2720,9 +2864,11 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {programs.map(p => (
-            <button key={p.id} onClick={() => onStartOnboarding(p)} style={{
+            <button key={p.id} onClick={() => { if (onClearHighlight) onClearHighlight(); onStartOnboarding(p); }} style={{
               width: "100%", padding: "18px 16px", borderRadius: 20,
-              border: `1px solid ${p.color}30`, background: `${p.color}08`,
+              border: p.id === highlightProgramId ? `2px solid ${p.color}` : `1px solid ${p.color}30`,
+              background: p.id === highlightProgramId ? `${p.color}18` : `${p.color}08`,
+              boxShadow: p.id === highlightProgramId ? `0 0 16px ${p.color}40` : "none",
               cursor: "pointer", textAlign: "left", transition: "all 0.2s"
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -2893,6 +3039,8 @@ export default function GAIns() {
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [programOnboardingProgram, setProgramOnboardingProgram] = useState(null); // program to enroll in
   const [redoingOnboarding, setRedoingOnboarding] = useState(false);
+  const [highlightProgramId, setHighlightProgramId] = useState(null);
+  useEffect(() => { if (screen !== "program") setHighlightProgramId(null); }, [screen]);
 
   // Shared data loader — called explicitly after auth is confirmed
   const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
@@ -3274,9 +3422,9 @@ export default function GAIns() {
           if (prs && prs.length > 0) { setCelebrationPRs(prs); }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
-        {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} />}
+        {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
-        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} />}
+        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
