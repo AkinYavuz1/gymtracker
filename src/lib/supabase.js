@@ -310,3 +310,221 @@ export async function seedDummyData() {
     console.error('Error checking for existing data:', e);
   }
 }
+
+// ─── Program helpers ────────────────────────────────────────
+
+export async function getPrograms() {
+  const { data, error } = await supabase
+    .from('programs')
+    .select('*, program_days(*, program_day_exercises(*))')
+    .eq('is_active', true)
+    .order('days_per_week');
+  if (error) console.error('getPrograms error:', error);
+  return data || [];
+}
+
+export async function getProgramDetails(programId) {
+  const { data, error } = await supabase
+    .from('programs')
+    .select('*, program_days(*, program_day_exercises(*))')
+    .eq('id', programId)
+    .single();
+  if (error) console.error('getProgramDetails error:', error);
+  return data;
+}
+
+export async function getActiveEnrollment() {
+  const session = await getSession();
+  if (!session?.user) return null;
+  const { data, error } = await supabase
+    .from('program_enrollments')
+    .select('*, programs(*, program_days(*, program_day_exercises(*)))')
+    .eq('user_id', session.user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (error) console.error('getActiveEnrollment error:', error);
+  return data;
+}
+
+export async function enrollInProgram(programId, settings = {}) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('program_enrollments')
+    .insert({
+      user_id: session.user.id,
+      program_id: programId,
+      settings,
+      status: 'active',
+      current_week: 1,
+      current_day: 0,
+      checkin_frequency: settings.checkin_frequency || 'weekly',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function abandonProgram(enrollmentId) {
+  const { error } = await supabase
+    .from('program_enrollments')
+    .update({ status: 'abandoned' })
+    .eq('id', enrollmentId);
+  if (error) throw error;
+}
+
+export async function getScheduledWorkouts(startDate, endDate) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase
+    .from('scheduled_workouts')
+    .select('*, program_days(name, muscle_groups)')
+    .eq('user_id', session.user.id)
+    .gte('scheduled_date', startDate)
+    .lte('scheduled_date', endDate)
+    .order('scheduled_date');
+  if (error) console.error('getScheduledWorkouts error:', error);
+  return data || [];
+}
+
+export async function updateScheduledWorkout(id, updates) {
+  const { data, error } = await supabase
+    .from('scheduled_workouts')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) console.error('updateScheduledWorkout error:', error);
+  return data;
+}
+
+export async function generateSchedule(enrollmentId, programDays, startDate, settings) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+
+  const trainingDays = settings.trainingDays || [1, 2, 3, 4, 5, 6]; // default Mon-Sat (1=Mon, 7=Sun)
+  const startingWeights = settings.startingWeights || {};
+  const rows = [];
+
+  for (let week = 1; week <= 5; week++) {
+    // Find the Monday of each week
+    const weekStart = new Date(startDate);
+    weekStart.setDate(weekStart.getDate() + (week - 1) * 7);
+
+    let dayIdx = 0;
+    for (let d = 0; d < 7 && dayIdx < programDays.length; d++) {
+      const dayOfWeek = d + 1; // 1=Mon, 7=Sun
+      if (!trainingDays.includes(dayOfWeek)) continue;
+
+      const programDay = programDays[dayIdx % programDays.length];
+      const schedDate = new Date(weekStart);
+      schedDate.setDate(schedDate.getDate() + d);
+
+      // Build prescribed exercises from programEngine
+      const prescribed = (programDay.program_day_exercises || [])
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map(ex => ({
+          exercise_name: ex.exercise_name,
+          sets: ex.base_sets,
+          reps: ex.base_reps,
+          weight: startingWeights[ex.exercise_name] || 20,
+          is_compound: ex.is_compound,
+          rir: 3,
+        }));
+
+      rows.push({
+        enrollment_id: enrollmentId,
+        user_id: session.user.id,
+        program_day_id: programDay.id,
+        scheduled_date: schedDate.toISOString().split('T')[0],
+        week_number: week,
+        status: 'scheduled',
+        prescribed_exercises: prescribed,
+      });
+
+      dayIdx++;
+    }
+  }
+
+  if (rows.length > 0) {
+    const { error } = await supabase
+      .from('scheduled_workouts')
+      .insert(rows);
+    if (error) throw error;
+  }
+
+  return rows.length;
+}
+
+export async function savePumpRating(scheduledWorkoutId, workoutId, rating) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('workout_feedback')
+    .insert({
+      user_id: session.user.id,
+      scheduled_workout_id: scheduledWorkoutId,
+      workout_id: workoutId,
+      feedback_type: 'pump',
+      overall_rating: rating,
+    });
+  if (error) throw error;
+}
+
+export async function saveSorenessRatings(scheduledWorkoutId, muscleRatings) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('workout_feedback')
+    .insert({
+      user_id: session.user.id,
+      scheduled_workout_id: scheduledWorkoutId,
+      feedback_type: 'soreness',
+      muscle_ratings: muscleRatings,
+    });
+  if (error) throw error;
+}
+
+export async function getRecentFeedback(muscleGroups) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase
+    .from('workout_feedback')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (error) console.error('getRecentFeedback error:', error);
+  return data || [];
+}
+
+export async function saveProgressCheckin(checkinData) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('progress_checkins')
+    .insert({
+      user_id: session.user.id,
+      ...checkinData,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getProgressCheckins(enrollmentId) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  let query = supabase
+    .from('progress_checkins')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .order('checkin_date', { ascending: false })
+    .limit(30);
+  if (enrollmentId) query = query.eq('enrollment_id', enrollmentId);
+  const { data, error } = await query;
+  if (error) console.error('getProgressCheckins error:', error);
+  return data || [];
+}
