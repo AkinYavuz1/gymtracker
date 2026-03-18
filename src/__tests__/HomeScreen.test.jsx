@@ -27,6 +27,10 @@ vi.mock('../lib/supabase', () => ({
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   getWeeklyStats: vi.fn().mockResolvedValue(null),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 
@@ -136,10 +140,10 @@ describe('HomeScreen', () => {
     expect(workoutsCard).toHaveTextContent('0');
   });
 
-  it('shows Volume Trend section', async () => {
+  it('shows AI Coach button', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Volume Trend')).toBeInTheDocument();
+      expect(screen.getByText('Ask AI Coach')).toBeInTheDocument();
     });
   });
 

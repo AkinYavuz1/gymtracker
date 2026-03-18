@@ -26,7 +26,13 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
+  reduceSetsFutureWorkouts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../lib/offlineStorage', () => ({
@@ -40,7 +46,7 @@ vi.mock('../lib/exerciseGifs', () => ({
 }));
 
 import App from '../App';
-import { getSession, getProfile, getTemplates, supabase } from '../lib/supabase';
+import { getSession, getProfile, getTemplates, supabase, reduceSetsFutureWorkouts } from '../lib/supabase';
 import { queueWorkout } from '../lib/offlineStorage';
 
 const mockSession = {
@@ -259,31 +265,161 @@ describe('Workout Flow', () => {
     });
 
     it('saves workout and navigates home on Finish', async () => {
-      // Mock the supabase from/insert chain
-      supabase.from.mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: { id: 'saved-workout' }, error: null }),
-          }),
-        }),
-        select: vi.fn().mockReturnThis(),
-        eq: vi.fn().mockReturnThis(),
-        single: vi.fn().mockResolvedValue({ data: null }),
-        order: vi.fn().mockReturnThis(),
-        limit: vi.fn().mockResolvedValue({ data: [], error: null }),
-      });
-
       await startWorkout();
 
-      // Mark a set as done
-      fireEvent.click(screen.getAllByText('○')[0]);
-
-      // Click Finish
+      // Don't mark any sets done — with no completed sets, onFinish([]) is called
+      // and navigation goes directly to home (no PR celebration modal triggered)
       fireEvent.click(screen.getByText(/Finish/));
 
       await waitFor(() => {
         // Should navigate back to home
         expect(screen.getByText('Start Workout')).toBeInTheDocument();
+      }, { timeout: 5000 });
+    });
+
+    describe('Incomplete sets warning (program workouts)', () => {
+      const programTemplate = {
+        id: 'prog-strength',
+        name: 'Strength A',
+        sort_order: 0,
+        color: '#DFFF3C',
+        icon: '💪',
+        scheduledWorkoutId: 'sw-42',
+        template_exercises: [
+          { name: 'Back Squat', equipment: 'Barbell', default_sets: 3, default_reps: 5, default_weight: 100, sort_order: 0 },
+        ],
+      };
+
+      async function startProgramWorkout() {
+        getTemplates.mockResolvedValue([programTemplate]);
+        render(<App />);
+        await waitFor(() => expect(screen.getByText('Start Workout')).toBeInTheDocument());
+        fireEvent.click(screen.getByText('Start Workout'));
+        // Wait for the DB-loaded template to appear
+        await waitFor(() => expect(screen.getByText('Strength A')).toBeInTheDocument());
+        fireEvent.click(screen.getByText('Strength A'));
+        await waitFor(() => expect(screen.getByText('Strength A Day')).toBeInTheDocument());
+      }
+
+      it('shows warning modal when finishing program workout with un-logged sets', async () => {
+        await startProgramWorkout();
+
+        // Do NOT mark any sets as done — tap Finish immediately
+        fireEvent.click(screen.getByText(/Finish/));
+
+        await waitFor(() => {
+          expect(screen.getByText('Heads up')).toBeInTheDocument();
+        });
+      });
+
+      it('modal shows correct count of un-logged sets', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+
+        await waitFor(() => {
+          // 3 sets prescribed, 0 done → "3 sets still to log"
+          expect(screen.getByText(/3 sets/)).toBeInTheDocument();
+        });
+      });
+
+      it('"Finish anyway" closes modal without showing reduce-sets prompt', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+        await waitFor(() => expect(screen.getByText('Heads up')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByText('Finish anyway'));
+
+        await waitFor(() => {
+          expect(screen.queryByText('Heads up')).not.toBeInTheDocument();
+          expect(screen.queryByText('Adjust future workouts?')).not.toBeInTheDocument();
+        });
+        expect(reduceSetsFutureWorkouts).not.toHaveBeenCalled();
+      });
+
+      it('"Yes, I couldn\'t finish" advances to reduce-sets prompt', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+        await waitFor(() => expect(screen.getByText('Heads up')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByText("Yes, I couldn't finish"));
+
+        await waitFor(() => {
+          expect(screen.getByText('Adjust future workouts?')).toBeInTheDocument();
+        });
+      });
+
+      it('"Yes, reduce sets" closes modal and calls reduceSetsFutureWorkouts', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+        await waitFor(() => expect(screen.getByText('Heads up')).toBeInTheDocument());
+        fireEvent.click(screen.getByText("Yes, I couldn't finish"));
+        await waitFor(() => expect(screen.getByText('Adjust future workouts?')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByText('Yes, reduce sets'));
+
+        await waitFor(() => {
+          expect(screen.queryByText('Adjust future workouts?')).not.toBeInTheDocument();
+        });
+        expect(reduceSetsFutureWorkouts).toHaveBeenCalledWith('sw-42');
+      });
+
+      it('"No, keep as planned" closes modal without calling reduceSetsFutureWorkouts', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+        await waitFor(() => expect(screen.getByText('Heads up')).toBeInTheDocument());
+        fireEvent.click(screen.getByText("Yes, I couldn't finish"));
+        await waitFor(() => expect(screen.getByText('Adjust future workouts?')).toBeInTheDocument());
+
+        fireEvent.click(screen.getByText('No, keep as planned'));
+
+        await waitFor(() => {
+          expect(screen.queryByText('Adjust future workouts?')).not.toBeInTheDocument();
+        });
+        expect(reduceSetsFutureWorkouts).not.toHaveBeenCalled();
+      });
+
+      it('does not show warning for program workouts when all sets are logged', async () => {
+        await startProgramWorkout();
+
+        // Mark all 3 sets as done
+        const checkButtons = screen.getAllByText('○');
+        for (const btn of checkButtons) fireEvent.click(btn);
+
+        // Finish immediately — no warning modal should appear
+        fireEvent.click(screen.getByText(/Finish/));
+
+        // Warning modal should never show
+        expect(screen.queryByText('Heads up')).not.toBeInTheDocument();
+      });
+
+      it('does not show warning for free-flow workouts with un-logged sets', async () => {
+        // Free-flow workout: no scheduledWorkoutId (default TEMPLATES have none)
+        await startWorkout();
+
+        // Do NOT log any sets — tap Finish
+        fireEvent.click(screen.getByText(/Finish/));
+
+        await waitFor(() => {
+          expect(screen.queryByText('Heads up')).not.toBeInTheDocument();
+          expect(screen.getByText('Start Workout')).toBeInTheDocument();
+        });
+      });
+
+      it('dismisses modal when tapping backdrop', async () => {
+        await startProgramWorkout();
+        fireEvent.click(screen.getByText(/Finish/));
+        await waitFor(() => expect(screen.getByText('Heads up')).toBeInTheDocument());
+
+        // Find the fixed overlay by walking up from the "Heads up" heading
+        // The modal has: fixed overlay div > bottom sheet div > "Heads up" content
+        const heading = screen.getByText('Heads up');
+        const bottomSheet = heading.parentElement; // the bottom sheet
+        const backdrop = bottomSheet?.parentElement; // the fixed overlay
+        if (backdrop) fireEvent.click(backdrop);
+
+        await waitFor(() => {
+          expect(screen.queryByText('Heads up')).not.toBeInTheDocument();
+        });
       });
     });
 

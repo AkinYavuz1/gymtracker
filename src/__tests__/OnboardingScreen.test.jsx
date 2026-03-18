@@ -11,6 +11,7 @@ vi.mock('../lib/supabase', () => ({
       single: vi.fn().mockResolvedValue({ data: null }),
       order: vi.fn().mockReturnThis(),
       limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+      update: vi.fn().mockReturnThis(),
     }),
     rpc: vi.fn().mockResolvedValue({ data: null }),
   },
@@ -25,6 +26,10 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 
@@ -64,10 +69,10 @@ describe('OnboardingScreen', () => {
     });
   });
 
-  it('shows step 1 of 4', async () => {
+  it('shows step 1 of 6', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Step 1 of 4')).toBeInTheDocument();
+      expect(screen.getByText('Step 1 of 6')).toBeInTheDocument();
     });
   });
 
@@ -84,7 +89,6 @@ describe('OnboardingScreen', () => {
     render(<App />);
     await waitFor(() => {
       const continueBtn = screen.getByText('Continue →');
-      // Button should exist but be styled as disabled
       expect(continueBtn).toBeInTheDocument();
     });
   });
@@ -107,7 +111,7 @@ describe('OnboardingScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('How old are you?')).toBeInTheDocument();
-      expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
+      expect(screen.getByText('Step 2 of 6')).toBeInTheDocument();
     });
   });
 
@@ -137,7 +141,7 @@ describe('OnboardingScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Your measurements')).toBeInTheDocument();
-      expect(screen.getByText('Step 3 of 4')).toBeInTheDocument();
+      expect(screen.getByText('Step 3 of 6')).toBeInTheDocument();
     });
   });
 
@@ -184,7 +188,7 @@ describe('OnboardingScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Your goals')).toBeInTheDocument();
-      expect(screen.getByText('Step 4 of 4')).toBeInTheDocument();
+      expect(screen.getByText('Step 4 of 6')).toBeInTheDocument();
     });
   });
 
@@ -201,10 +205,10 @@ describe('OnboardingScreen', () => {
     fireEvent.click(screen.getByText('Continue →'));
 
     await waitFor(() => {
-      expect(screen.getByText('Build Muscle')).toBeInTheDocument();
-      expect(screen.getByText('Get Stronger')).toBeInTheDocument();
-      expect(screen.getByText('Endurance')).toBeInTheDocument();
-      expect(screen.getByText('Stay Fit')).toBeInTheDocument();
+      expect(screen.getByText('Fat Loss')).toBeInTheDocument();
+      expect(screen.getByText('Muscle Gain')).toBeInTheDocument();
+      expect(screen.getByText('Maintenance')).toBeInTheDocument();
+      expect(screen.getByText('Performance')).toBeInTheDocument();
     });
   });
 
@@ -255,25 +259,35 @@ describe('OnboardingScreen', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. 80'), { target: { value: '85' } });
     fireEvent.click(screen.getByText('Continue →'));
 
-    // Step 4: Goal + Experience
-    await waitFor(() => expect(screen.getByText('Build Muscle')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('Build Muscle'));
+    // Step 4: Goal + Experience (Muscle Gain requires no target rate — only fat_loss/muscle_gain show it)
+    // Fat Loss requires a target rate. Use Maintenance (no target rate needed).
+    await waitFor(() => expect(screen.getByText('Maintenance')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Maintenance'));
     fireEvent.click(screen.getByText('Intermediate'));
 
-    // Final button
+    // Continue to step 5 (benchmarks)
+    fireEvent.click(screen.getByText('Continue →'));
+
+    // Step 5: Skip benchmarks
+    await waitFor(() => expect(screen.getByText('Skip — I don\'t know my lifts')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Skip — I don\'t know my lifts'));
+
+    // Step 6: Focus areas — finish
+    await waitFor(() => expect(screen.getByText(/Let's Go/)).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Let's Go/));
 
     await waitFor(() => {
-      expect(updateProfile).toHaveBeenCalledWith({
-        gender: 'male',
-        age: 25,
-        weight_kg: 85,
-        height_cm: null,
-        training_goal: 'hypertrophy',
-        experience: 'intermediate',
-        unit_system: 'metric',
-        onboarding_complete: true,
-      });
+      expect(updateProfile).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gender: 'male',
+          age: 25,
+          weight_kg: 85,
+          training_goal: 'maintenance',
+          experience: 'intermediate',
+          unit_system: 'metric',
+          onboarding_complete: true,
+        })
+      );
     });
   });
 
@@ -337,11 +351,20 @@ describe('OnboardingScreen', () => {
     fireEvent.change(screen.getByPlaceholderText('e.g. 180'), { target: { value: '180' } });
     fireEvent.click(screen.getByText('Continue →'));
 
-    // Step 4: Goal + Experience
-    await waitFor(() => expect(screen.getByText('Build Muscle')).toBeInTheDocument());
-    fireEvent.click(screen.getByText('Build Muscle'));
+    // Step 4: Goal + Experience (use Maintenance — no target rate required)
+    await waitFor(() => expect(screen.getByText('Maintenance')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Maintenance'));
     fireEvent.click(screen.getByText('Beginner'));
 
+    // Continue to step 5
+    fireEvent.click(screen.getByText('Continue →'));
+
+    // Step 5: Skip benchmarks
+    await waitFor(() => expect(screen.getByText('Skip — I don\'t know my lifts')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Skip — I don\'t know my lifts'));
+
+    // Step 6: Finish
+    await waitFor(() => expect(screen.getByText(/Let's Go/)).toBeInTheDocument());
     fireEvent.click(screen.getByText(/Let's Go/));
 
     await waitFor(() => {

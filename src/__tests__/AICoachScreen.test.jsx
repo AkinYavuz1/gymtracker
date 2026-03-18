@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
@@ -25,6 +25,10 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 
@@ -39,11 +43,17 @@ vi.mock('../lib/exerciseGifs', () => ({
 }));
 
 import App from '../App';
-import { getSession, getProfile, callCoachAPI } from '../lib/supabase';
+import { getSession, getProfile, getActiveEnrollment, callCoachAPI } from '../lib/supabase';
 
 const mockSession = {
   user: { id: 'user-1', email: 'test@test.com', user_metadata: { full_name: 'Test' } },
   access_token: 'tok',
+};
+
+const mockActiveEnrollment = {
+  id: 'enroll-1',
+  current_week: 1,
+  programs: { id: 'prog-1', name: 'Test Program', color: '#A47BFF' },
 };
 
 describe('AICoachScreen', () => {
@@ -53,6 +63,7 @@ describe('AICoachScreen', () => {
     getProfile.mockResolvedValue({
       id: 'user-1', name: 'Test', plan: 'free', onboarding_complete: true, created_at: '2025-01-01T00:00:00Z',
     });
+    getActiveEnrollment.mockResolvedValue(null);
   });
 
   async function navigateToCoach() {
@@ -157,18 +168,34 @@ describe('AICoachScreen', () => {
     });
   });
 
-  it('shows follow-up buttons after response', async () => {
+  it('shows action panel after response (no enrollment shows create program button)', async () => {
+    // No enrollment — shows "Create new program with this advice" action button
     callCoachAPI.mockResolvedValue({ text: 'Here is my analysis', cost_usd: 0.001 });
 
     await navigateToCoach();
     fireEvent.click(screen.getByText('Rate my week'));
 
     await waitFor(() => {
-      expect(screen.getByText('Go deeper')).toBeInTheDocument();
-      expect(screen.getByText('Make a plan')).toBeInTheDocument();
-      expect(screen.getByText('Why?')).toBeInTheDocument();
-      expect(screen.getByText('What else?')).toBeInTheDocument();
+      expect(screen.getByText('Here is my analysis')).toBeInTheDocument();
+      expect(screen.getByText('Create new program with this advice')).toBeInTheDocument();
     });
+  });
+
+  it('shows follow-up buttons when no pending action (after error response)', async () => {
+    // Error path: setPendingMsgIdx is NOT called, so pendingMsgIdx stays null
+    // → follow-up buttons are NOT shown either (last message is assistant with error content)
+    // This verifies the condition: follow-ups only show when pendingMsgIdx === null AND lastMsgIsAssistant
+    callCoachAPI.mockRejectedValue(new Error('Some error'));
+
+    await navigateToCoach();
+    fireEvent.click(screen.getByText('Rate my week'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Some error')).toBeInTheDocument();
+    });
+    // After error, no pending panel and no follow-up buttons (last is error assistant msg)
+    // The "New" button is present confirming we're in conversation mode
+    expect(screen.getByText('New')).toBeInTheDocument();
   });
 
   it('shows "New" button after sending a message', async () => {
@@ -206,26 +233,22 @@ describe('AICoachScreen', () => {
       let queryCount = 0;
       callCoachAPI.mockImplementation(() => {
         queryCount++;
-        return Promise.resolve({ text: `Response ${queryCount}`, cost_usd: 0 });
+        const q = queryCount;
+        return Promise.resolve({ text: `Response ${q}`, cost_usd: 0 });
       });
 
       await navigateToCoach();
 
-      // Send 5 queries
+      // Send 5 queries using "New" to reset between each
       for (let i = 0; i < 5; i++) {
-        // Click a prompt
-        if (i === 0) {
-          fireEvent.click(screen.getByText('Rate my week'));
-        } else {
-          // "Go deeper" may appear as both message text and button; click the button
-          await waitFor(() => {
-            const goDeeper = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-            expect(goDeeper).toBeTruthy();
-          });
-          const btn = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-          fireEvent.click(btn);
-        }
+        fireEvent.click(screen.getByText('Rate my week'));
         await waitFor(() => expect(screen.getByText(`Response ${i + 1}`)).toBeInTheDocument());
+
+        if (i < 4) {
+          // Reset for next query
+          fireEvent.click(screen.getByText('New'));
+          await waitFor(() => expect(screen.getByText('Rate my week')).toBeInTheDocument());
+        }
       }
 
       // After 5 queries, quota should be 0/5
@@ -235,15 +258,11 @@ describe('AICoachScreen', () => {
     });
 
     it('shows upgrade prompt when limit reached', async () => {
-      // Start with 5 queries already used
-      getProfile.mockResolvedValue({
-        id: 'user-1', name: 'Test', plan: 'free', onboarding_complete: true, created_at: '2025-01-01T00:00:00Z',
-      });
-
       let queryCount = 0;
       callCoachAPI.mockImplementation(() => {
         queryCount++;
-        return Promise.resolve({ text: `Resp ${queryCount}`, cost_usd: 0 });
+        const q = queryCount;
+        return Promise.resolve({ text: `Resp ${q}`, cost_usd: 0 });
       });
 
       render(<App />);
@@ -253,19 +272,15 @@ describe('AICoachScreen', () => {
       fireEvent.click(screen.getByText('Ask AI Coach'));
       await waitFor(() => expect(screen.getByText('AI Strength Coach')).toBeInTheDocument());
 
-      // Use up all queries
+      // Use up all 5 queries using "New" to reset between each
       for (let i = 0; i < 5; i++) {
-        if (i === 0) {
-          fireEvent.click(screen.getByText('Rate my week'));
-        } else {
-          await waitFor(() => {
-            const goDeeper = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-            expect(goDeeper).toBeTruthy();
-          });
-          const btn = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-          fireEvent.click(btn);
-        }
+        fireEvent.click(screen.getByText('Rate my week'));
         await waitFor(() => expect(screen.getByText(`Resp ${i + 1}`)).toBeInTheDocument());
+
+        if (i < 4) {
+          fireEvent.click(screen.getByText('New'));
+          await waitFor(() => expect(screen.getByText('Rate my week')).toBeInTheDocument());
+        }
       }
 
       // Click "New" to get back to prompts

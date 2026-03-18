@@ -19,6 +19,10 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 

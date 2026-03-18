@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS public.programs (
     name            TEXT NOT NULL,
     slug            TEXT NOT NULL UNIQUE,
     description     TEXT,
-    split_type      TEXT NOT NULL CHECK (split_type IN ('ppl','upper_lower','full_body','bro_split')),
+    split_type      TEXT NOT NULL CHECK (split_type IN ('ppl','upper_lower','full_body','five_day_split')),
     days_per_week   INTEGER NOT NULL CHECK (days_per_week BETWEEN 2 AND 7),
     duration_weeks  INTEGER NOT NULL DEFAULT 5,
     goal            TEXT NOT NULL CHECK (goal IN ('hypertrophy','strength','endurance','general')),
@@ -291,15 +291,15 @@ BEGIN
     END IF;
 END $$;
 
--- Bro Split — 5 days/week
+-- 5-Day Split — 5 days/week
 DO $$
 DECLARE
     v_prog_id UUID;
     v_day_id UUID;
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM public.programs WHERE slug = 'bro-split') THEN
+    IF NOT EXISTS (SELECT 1 FROM public.programs WHERE slug = '5-day-split') THEN
         INSERT INTO public.programs (name, slug, description, split_type, days_per_week, duration_weeks, goal, experience_min, color, icon)
-        VALUES ('Bro Split', 'bro-split', 'Classic 5-day bodybuilding split. One muscle group per day for maximum isolation and volume.', 'bro_split', 5, 5, 'hypertrophy', 'intermediate', '#A47BFF', '🏆')
+        VALUES ('5-Day Split', '5-day-split', 'Classic 5-day bodybuilding split. One muscle group per day for maximum isolation and volume.', 'five_day_split', 5, 5, 'hypertrophy', 'intermediate', '#A47BFF', '🏆')
         RETURNING id INTO v_prog_id;
 
         INSERT INTO public.program_days (program_id, day_index, name, muscle_groups, sort_order)

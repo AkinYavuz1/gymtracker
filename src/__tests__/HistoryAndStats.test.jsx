@@ -25,6 +25,10 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 
@@ -113,10 +117,10 @@ describe('HistoryScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Legs')).toBeInTheDocument();
-      // Duration should show 71m
-      expect(screen.getAllByText('71m').length).toBeGreaterThan(0);
-      // Volume should show 18.2k kg
-      expect(screen.getByText('18.2k kg')).toBeInTheDocument();
+      // Duration shows "71 min" format
+      expect(screen.getAllByText(/71 min/).length).toBeGreaterThan(0);
+      // Volume shows locale-formatted kg
+      expect(screen.getByText(/18,200 kg/)).toBeInTheDocument();
     });
   });
 
@@ -255,7 +259,7 @@ describe('PRScreen', () => {
     fireEvent.click(screen.getByText('See All →'));
 
     await waitFor(() => {
-      expect(screen.getByText('No PRs Yet')).toBeInTheDocument();
+      expect(screen.getByText('No 1RM PRs Yet')).toBeInTheDocument();
     });
   });
 
@@ -270,9 +274,11 @@ describe('PRScreen', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Deadlift')).toBeInTheDocument();
-      expect(screen.getByText('200kg')).toBeInTheDocument();
-      expect(screen.getByText('5 reps @ 200kg')).toBeInTheDocument();
-      expect(screen.getByText('e1RM: 225kg')).toBeInTheDocument();
+      // e1RM shown as big number + separate "e1RM" label
+      expect(screen.getByText('225kg')).toBeInTheDocument();
+      expect(screen.getByText('e1RM')).toBeInTheDocument();
+      // Subtitle shows "reps @ weight"
+      expect(screen.getByText(/5 reps @ 200kg/)).toBeInTheDocument();
     });
   });
 

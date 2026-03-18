@@ -25,6 +25,10 @@ vi.mock('../lib/supabase', () => ({
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
+  getPrograms: vi.fn().mockResolvedValue([]),
+  getActiveEnrollment: vi.fn().mockResolvedValue(null),
+  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
 }));
 
@@ -39,7 +43,7 @@ vi.mock('../lib/exerciseGifs', () => ({
 }));
 
 import App from '../App';
-import { getSession, getProfile, callCoachAPI } from '../lib/supabase';
+import { getSession, getProfile, getActiveEnrollment, callCoachAPI } from '../lib/supabase';
 
 const mockSession = {
   user: { id: 'user-1', email: 'test@test.com', user_metadata: { full_name: 'Test' } },
@@ -53,13 +57,15 @@ describe('PricingScreen', () => {
     getProfile.mockResolvedValue({
       id: 'user-1', name: 'Test', plan: 'free', onboarding_complete: true, created_at: '2025-01-01T00:00:00Z',
     });
+    getActiveEnrollment.mockResolvedValue(null);
   });
 
   async function navigateToPricing() {
     let queryCount = 0;
     callCoachAPI.mockImplementation(() => {
       queryCount++;
-      return Promise.resolve({ text: `Response ${queryCount}`, cost_usd: 0 });
+      const q = queryCount;
+      return Promise.resolve({ text: `Response ${q}`, cost_usd: 0 });
     });
 
     render(<App />);
@@ -69,20 +75,15 @@ describe('PricingScreen', () => {
     fireEvent.click(screen.getByText('Coach'));
     await waitFor(() => expect(screen.getByText('AI Strength Coach')).toBeInTheDocument());
 
-    // Use up all 5 queries
+    // Use up all 5 queries — use "New" to reset between each
     for (let i = 0; i < 5; i++) {
-      if (i === 0) {
-        fireEvent.click(screen.getByText('Rate my week'));
-      } else {
-        // "Go deeper" may appear as both message text and button; click the button
-        await waitFor(() => {
-          const goDeeper = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-          expect(goDeeper).toBeTruthy();
-        });
-        const btn = screen.getAllByText('Go deeper').find(el => el.tagName === 'BUTTON');
-        fireEvent.click(btn);
-      }
+      fireEvent.click(screen.getByText('Rate my week'));
       await waitFor(() => expect(screen.getByText(`Response ${i + 1}`)).toBeInTheDocument());
+
+      if (i < 4) {
+        fireEvent.click(screen.getByText('New'));
+        await waitFor(() => expect(screen.getByText('Rate my week')).toBeInTheDocument());
+      }
     }
 
     // Click "New" to reset view
@@ -165,6 +166,7 @@ describe('Stripe subscription state changes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getSession.mockResolvedValue(mockSession);
+    getActiveEnrollment.mockResolvedValue(null);
   });
 
   it('shows free plan UI by default', async () => {

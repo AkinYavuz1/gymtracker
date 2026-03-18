@@ -6,6 +6,8 @@ const { mockAuth, mockQueryBuilder, mockClient } = vi.hoisted(() => {
     insert: vi.fn(),
     update: vi.fn(),
     eq: vi.fn(),
+    neq: vi.fn(),
+    gt: vi.fn(),
     single: vi.fn(),
     order: vi.fn(),
     limit: vi.fn(),
@@ -38,6 +40,7 @@ import {
   signUp, signIn, signOut, getSession, getUser, signInWithGoogle,
   getProfile, updateProfile, getTemplates, getWorkouts, getPersonalRecords,
   getWeeklyStats, getVolumeTrend, checkAIQuota, callCoachAPI, seedDummyData,
+  reduceSetsFutureWorkouts,
 } from '../supabase';
 
 // Helper to reset the chainable mock
@@ -47,6 +50,8 @@ function setupChainableMock() {
   mockQueryBuilder.insert.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.update.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.eq.mockReturnValue(mockQueryBuilder);
+  mockQueryBuilder.neq.mockReturnValue(mockQueryBuilder);
+  mockQueryBuilder.gt.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.order.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.limit.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.single.mockResolvedValue({ data: null, error: null });
@@ -285,6 +290,132 @@ describe('supabase.js', () => {
       await seedDummyData();
       expect(mockClient.from).toHaveBeenCalledWith('workouts');
       expect(mockQueryBuilder.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reduceSetsFutureWorkouts', () => {
+    it('throws when not authenticated', async () => {
+      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      await expect(reduceSetsFutureWorkouts('sw-1')).rejects.toThrow('Not authenticated');
+    });
+
+    it('returns silently when current workout fetch errors', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: { message: 'not found' } });
+      await expect(reduceSetsFutureWorkouts('sw-1')).resolves.toBeUndefined();
+    });
+
+    it('returns silently when current workout data is null', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: null });
+      await expect(reduceSetsFutureWorkouts('sw-1')).resolves.toBeUndefined();
+    });
+
+    it('returns silently when no future workouts exist', async () => {
+      // First query: fetch current workout
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-1', enrollment_id: 'enr-1', week_number: 2 },
+        error: null,
+      });
+      // Second query: future workouts returns empty
+      mockQueryBuilder.neq.mockResolvedValueOnce({ data: [], error: null });
+
+      await expect(reduceSetsFutureWorkouts('sw-1')).resolves.toBeUndefined();
+      expect(mockQueryBuilder.update).not.toHaveBeenCalled();
+    });
+
+    it('returns silently when future workout fetch errors', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-1', enrollment_id: 'enr-1', week_number: 2 },
+        error: null,
+      });
+      mockQueryBuilder.neq.mockResolvedValueOnce({ data: null, error: { message: 'db error' } });
+
+      await expect(reduceSetsFutureWorkouts('sw-1')).resolves.toBeUndefined();
+      expect(mockQueryBuilder.update).not.toHaveBeenCalled();
+    });
+
+    it('decrements sets by 1 for each exercise in future workouts', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-1', enrollment_id: 'enr-1', week_number: 2 },
+        error: null,
+      });
+      mockQueryBuilder.neq.mockResolvedValueOnce({
+        data: [
+          { id: 'fw-1', week_number: 3, prescribed_exercises: [{ name: 'Squat', sets: 4 }, { name: 'Leg Press', sets: 3 }] },
+          { id: 'fw-2', week_number: 4, prescribed_exercises: [{ name: 'Squat', sets: 4 }, { name: 'Leg Press', sets: 3 }] },
+        ],
+        error: null,
+      });
+      mockQueryBuilder.eq.mockReturnValue(mockQueryBuilder);
+
+      await reduceSetsFutureWorkouts('sw-1');
+
+      expect(mockQueryBuilder.update).toHaveBeenCalledWith({
+        prescribed_exercises: [{ name: 'Squat', sets: 3 }, { name: 'Leg Press', sets: 2 }],
+      });
+      expect(mockQueryBuilder.update).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not reduce sets below 1', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-1', enrollment_id: 'enr-1', week_number: 2 },
+        error: null,
+      });
+      mockQueryBuilder.neq.mockResolvedValueOnce({
+        data: [
+          { id: 'fw-1', week_number: 3, prescribed_exercises: [{ name: 'Deadlift', sets: 1 }] },
+        ],
+        error: null,
+      });
+
+      await reduceSetsFutureWorkouts('sw-1');
+
+      expect(mockQueryBuilder.update).toHaveBeenCalledWith({
+        prescribed_exercises: [{ name: 'Deadlift', sets: 1 }],
+      });
+    });
+
+    it('defaults to 3 sets when sets field is missing, reducing to 2', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-1', enrollment_id: 'enr-1', week_number: 1 },
+        error: null,
+      });
+      mockQueryBuilder.neq.mockResolvedValueOnce({
+        data: [
+          { id: 'fw-1', week_number: 2, prescribed_exercises: [{ name: 'Bench Press' }] },
+        ],
+        error: null,
+      });
+
+      await reduceSetsFutureWorkouts('sw-1');
+
+      expect(mockQueryBuilder.update).toHaveBeenCalledWith({
+        prescribed_exercises: [{ name: 'Bench Press', sets: 2 }],
+      });
+    });
+
+    it('queries future workouts with correct filters', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({
+        data: { program_day_id: 'pd-42', enrollment_id: 'enr-99', week_number: 3 },
+        error: null,
+      });
+      mockQueryBuilder.neq.mockResolvedValueOnce({ data: [], error: null });
+
+      await reduceSetsFutureWorkouts('sw-1');
+
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('enrollment_id', 'enr-99');
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('program_day_id', 'pd-42');
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('status', 'scheduled');
+      expect(mockQueryBuilder.gt).toHaveBeenCalledWith('week_number', 3);
+      expect(mockQueryBuilder.neq).toHaveBeenCalledWith('week_number', 5);
+    });
+
+    it('looks up current workout by scheduledWorkoutId', async () => {
+      mockQueryBuilder.single.mockResolvedValueOnce({ data: null, error: { message: 'not found' } });
+
+      await reduceSetsFutureWorkouts('sw-abc');
+
+      expect(mockClient.from).toHaveBeenCalledWith('scheduled_workouts');
+      expect(mockQueryBuilder.eq).toHaveBeenCalledWith('id', 'sw-abc');
     });
   });
 });
