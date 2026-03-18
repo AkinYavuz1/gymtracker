@@ -153,6 +153,49 @@ export async function getWorkouts(limit = 10) {
   return data || [];
 }
 
+export async function deleteWorkout(workoutId, startedAt) {
+  const session = await getSession();
+  const userId = session?.user?.id;
+
+  // Reset by workout_id FK (data saved after the fix that stores this link)
+  await supabase
+    .from('scheduled_workouts')
+    .update({ status: 'scheduled', workout_id: null })
+    .eq('workout_id', workoutId);
+
+  // Fallback: reset by week range for older data where workout_id was never stored.
+  // Find any completed scheduled workout with no workout_id link within the same
+  // calendar week as the deleted workout — these are orphaned completions.
+  if (startedAt && userId) {
+    const d = new Date(startedAt);
+    // Get Monday of that week
+    const day = d.getDay(); // 0=Sun
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((day + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    const weekStart = monday.toISOString().split('T')[0];
+    const weekEnd = sunday.toISOString().split('T')[0];
+
+    await supabase
+      .from('scheduled_workouts')
+      .update({ status: 'scheduled', workout_id: null })
+      .eq('user_id', userId)
+      .eq('status', 'completed')
+      .is('workout_id', null)
+      .gte('scheduled_date', weekStart)
+      .lte('scheduled_date', weekEnd);
+  }
+
+  const { error } = await supabase
+    .from('workouts')
+    .delete()
+    .eq('id', workoutId);
+  if (error) throw error;
+}
+
 export async function getWorkoutSets(workoutIds) {
   if (!workoutIds || workoutIds.length === 0) return [];
   const { data, error } = await supabase
@@ -558,6 +601,39 @@ export async function applyDifficultyToFutureWorkouts(scheduledWorkoutId, diffic
   }
 }
 
+export async function reduceSetsFutureWorkouts(scheduledWorkoutId) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+
+  const { data: current, error: fetchErr } = await supabase
+    .from('scheduled_workouts')
+    .select('program_day_id, enrollment_id, week_number')
+    .eq('id', scheduledWorkoutId)
+    .single();
+  if (fetchErr || !current) return;
+
+  const { data: futureWorkouts, error: futureErr } = await supabase
+    .from('scheduled_workouts')
+    .select('id, prescribed_exercises, week_number')
+    .eq('enrollment_id', current.enrollment_id)
+    .eq('program_day_id', current.program_day_id)
+    .eq('status', 'scheduled')
+    .gt('week_number', current.week_number)
+    .neq('week_number', 5);
+  if (futureErr || !futureWorkouts?.length) return;
+
+  for (const fw of futureWorkouts) {
+    const exercises = (fw.prescribed_exercises || []).map(ex => ({
+      ...ex,
+      sets: Math.max(1, (ex.sets || 3) - 1),
+    }));
+    await supabase
+      .from('scheduled_workouts')
+      .update({ prescribed_exercises: exercises })
+      .eq('id', fw.id);
+  }
+}
+
 export async function saveSorenessRatings(scheduledWorkoutId, muscleRatings) {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
@@ -705,4 +781,25 @@ export async function createUserProgram(programData) {
   }
 
   return program;
+}
+
+/**
+ * Fetch per-session volume standards for a given training frequency.
+ * Returns a map: { [muscle_group]: { mev_low, mev_high, mav_low, mav_high, mrv_low, mrv_high } }
+ */
+export async function getVolumeStandards(daysPerWeek) {
+  const days = [3, 4, 5, 6].includes(daysPerWeek) ? daysPerWeek : 3;
+  const { data, error } = await supabase
+    .from('muscle_volume_standards')
+    .select('muscle_group, mev_low, mev_high, mav_low, mav_high, mrv_low, mrv_high')
+    .eq('days_per_week', days)
+    .eq('scope', 'per_session');
+  if (error) {
+    console.error('getVolumeStandards error:', error);
+    return {};
+  }
+  return Object.fromEntries((data || []).map(row => [
+    row.muscle_group,
+    { mev_low: row.mev_low, mev_high: row.mev_high, mav_low: row.mav_low, mav_high: row.mav_high, mrv_low: row.mrv_low, mrv_high: row.mrv_high }
+  ]));
 }

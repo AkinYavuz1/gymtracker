@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram } from "./lib/supabase";
-import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup } from "./lib/programEngine";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteWorkout, getVolumeStandards } from "./lib/supabase";
+import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup, getVolumeZoneLabel, getVolumeZoneColor } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
 import ExerciseAnimation from "./lib/exerciseAnimations";
@@ -1055,15 +1055,33 @@ function TemplatePicker({ onSelect, onBack }) {
 }
 
 /* ═══ WORKOUT ═══ */
-function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
+function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs = [] }) {
   const [timer, setTimer] = useState(0);
   const [exs, setExs] = useState(() => template.exercises.map(e => ({ ...e, setsData: Array.from({ length: e.sets }, () => ({ weight: e.lastWeight, reps: e.lastReps, done: false })) })));
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
   const [rest, setRest] = useState(0); const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [showIncompleteWarn, setShowIncompleteWarn] = useState(false);
+  const [showReduceSetsPrompt, setShowReduceSetsPrompt] = useState(false);
   const [previewEx, setPreviewEx] = useState(null); // { name, equipment, icon, gifUrl, loading }
   const [demoIdx, setDemoIdx] = useState(null); // index of exercise showing inline animation
   const color = template.color;
+  const isProgramWorkout = !!template.scheduledWorkoutId;
+  const getRepRange = (exName, prescribedWeight) => {
+    if (!isProgramWorkout) return null;
+    const pr = prs.find(p => p.exercise_name?.toLowerCase() === exName?.toLowerCase());
+    if (!pr?.estimated_1rm || !prescribedWeight) return null;
+    const pct = prescribedWeight / pr.estimated_1rm;
+    if (pct >= 0.95) return "1–2 reps";
+    if (pct >= 0.90) return "2–3 reps";
+    if (pct >= 0.85) return "3–5 reps";
+    if (pct >= 0.80) return "5–6 reps";
+    if (pct >= 0.75) return "6–8 reps";
+    if (pct >= 0.70) return "8–10 reps";
+    if (pct >= 0.65) return "10–12 reps";
+    if (pct >= 0.60) return "12–15 reps";
+    return "15+ reps";
+  };
   useEffect(() => { const i = setInterval(() => setTimer(t => t + 1), 1000); return () => clearInterval(i); }, []);
   useEffect(() => { if (rest > 0) { const i = setInterval(() => setRest(t => t <= 1 ? 0 : t - 1), 1000); return () => clearInterval(i); } }, [rest]);
   const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -1127,6 +1145,11 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
           .single();
 
         if (workoutError) throw workoutError;
+
+        // Link the completed workout to its scheduled_workout row so deletion can reset it
+        if (template.scheduledWorkoutId) {
+          await supabase.from("scheduled_workouts").update({ workout_id: workout.id }).eq("id", template.scheduledWorkoutId);
+        }
 
         if (completedSets.length > 0) {
           const { error: setsError } = await supabase
@@ -1233,30 +1256,80 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
 
   return (
     <div style={{ padding: "0 20px 110px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={saveWorkout} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : isOnline ? "✓" : "✓ (offline)"}</button></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={() => { if (isProgramWorkout && ds < ts) { setShowIncompleteWarn(true); } else { saveWorkout(); } }} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : isOnline ? "✓" : "✓ (offline)"}</button></div>
       <div style={{ textAlign: "center", padding: "10px 0 20px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>{template.label} Day</div><div style={{ fontSize: 42, fontWeight: 800, color: "#fff", fontFamily: C.font, letterSpacing: -2, lineHeight: 1, margin: "4px 0 10px" }}>{fmt(timer)}</div><div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}><div style={{ width: 140, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 2, background: color, width: `${(ds / ts) * 100}%`, transition: "width .4s ease" }} /></div><span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ds}/{ts}</span></div></div>
       {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
       {exs.map((ex, ei) => (
         <div key={ei} style={{ background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14, overflow: "hidden" }}>
-          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div>{ex.rir !== undefined && <span style={{ padding: "3px 7px", borderRadius: 6, background: `${color}15`, border: `1px solid ${color}30`, fontSize: 9, fontWeight: 700, color, fontFamily: C.mono }}>RIR {ex.rir}</span>}</div></div><button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button></div>
+          <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div>{ex.rir !== undefined && <span style={{ padding: "3px 7px", borderRadius: 6, background: `${color}15`, border: `1px solid ${color}30`, fontSize: 9, fontWeight: 700, color, fontFamily: C.mono }}>Reps in Reserve {ex.rir}</span>}{(() => { const range = getRepRange(ex.name, ex.setsData[0]?.weight ?? ex.lastWeight); return range ? (<span style={{ padding: "3px 7px", borderRadius: 6, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.5)", fontFamily: C.mono }}>{range}</span>) : null; })()}</div></div>{!isProgramWorkout && <button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button>}</div>
           {/* Exercise demo hidden until video assets are ready */}
           <div style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "0 16px 4px", fontSize: 9, color: "rgba(255,255,255,0.2)", fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase" }}><div>Set</div><div>Kg</div><div>Reps</div><div style={{ textAlign: "center" }}>Log</div></div>
           {ex.setsData.map((s, si) => (
             <div key={si} style={{ display: "grid", gridTemplateColumns: "36px 1fr 1fr 44px", padding: "9px 16px", alignItems: "center", background: s.done ? `${color}06` : "transparent", borderTop: "1px solid rgba(255,255,255,0.03)" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: s.done ? color : "rgba(255,255,255,0.25)", fontFamily: C.mono }}>{si + 1}</div>
-              <button onClick={() => { if (!s.done) { setEdit({ ei, si }); setEw(s.weight); setEr(s.reps); } }} style={{ background: "none", border: "none", cursor: s.done ? "default" : "pointer", textAlign: "left", padding: 0, fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: C.font, textDecoration: !s.done ? "underline dashed rgba(255,255,255,0.15)" : "none", textUnderlineOffset: 3 }}>{s.weight}</button>
+              {isProgramWorkout
+                ? <span style={{ fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.4)", fontFamily: C.font }}>{s.weight}</span>
+                : <button onClick={() => { if (!s.done) { setEdit({ ei, si }); setEw(s.weight); setEr(s.reps); } }} style={{ background: "none", border: "none", cursor: s.done ? "default" : "pointer", textAlign: "left", padding: 0, fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: C.font, textDecoration: !s.done ? "underline dashed rgba(255,255,255,0.15)" : "none", textUnderlineOffset: 3 }}>{s.weight}</button>
+              }
               <button onClick={() => { if (!s.done) { setEdit({ ei, si }); setEw(s.weight); setEr(s.reps); } }} style={{ background: "none", border: "none", cursor: s.done ? "default" : "pointer", textAlign: "left", padding: 0, fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: C.font, textDecoration: !s.done ? "underline dashed rgba(255,255,255,0.15)" : "none", textUnderlineOffset: 3 }}>{s.reps}</button>
               <div style={{ textAlign: "center" }}><button onClick={() => { setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: e.setsData.map((ss, j) => j === si ? { ...ss, done: !ss.done } : ss) } : e)); if (!s.done) setRest(90); }} style={{ width: 32, height: 32, borderRadius: 10, border: "none", cursor: "pointer", background: s.done ? color : "rgba(255,255,255,0.05)", color: s.done ? C.bg : "rgba(255,255,255,0.15)", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.done ? "✓" : "○"}</button></div>
             </div>
           ))}
-          <div style={{ padding: "8px 16px 12px" }}><button onClick={() => setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: [...e.setsData, { weight: e.lastWeight, reps: e.lastReps, done: false }] } : e))} style={{ background: "none", border: "1px dashed rgba(255,255,255,0.08)", borderRadius: 10, color: "rgba(255,255,255,0.25)", padding: "7px", width: "100%", fontSize: 12, cursor: "pointer" }}>+ Add Set</button></div>
+          {!isProgramWorkout && <div style={{ padding: "8px 16px 12px" }}><button onClick={() => setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: [...e.setsData, { weight: e.lastWeight, reps: e.lastReps, done: false }] } : e))} style={{ background: "none", border: "1px dashed rgba(255,255,255,0.08)", borderRadius: 10, color: "rgba(255,255,255,0.25)", padding: "7px", width: "100%", fontSize: 12, cursor: "pointer" }}>+ Add Set</button></div>}
         </div>
       ))}
-      <button onClick={() => { setShowAdd(true); setAddPg(0); }} style={{ width: "100%", padding: "15px", borderRadius: 16, background: C.card, border: "1px dashed rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+ Add Exercise</button>
+      {!isProgramWorkout && <button onClick={() => { setShowAdd(true); setAddPg(0); }} style={{ width: "100%", padding: "15px", borderRadius: 16, background: C.card, border: "1px dashed rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.35)", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>+ Add Exercise</button>}
 
-      {edit && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setEdit(null)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 20px" }} /><div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, textAlign: "center", marginBottom: 4 }}>{exs[edit.ei].name}</div><div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginBottom: 24, fontFamily: C.mono }}>Set {edit.si + 1}</div><div style={{ display: "flex", flexDirection: "column", gap: 24, alignItems: "center" }}><WeightStepper value={ew} onChange={setEw} color={color} /><RepBubbles value={er} onChange={setEr} color={color} /></div><button onClick={() => { setExs(p => p.map((e, i) => i === edit.ei ? { ...e, setsData: e.setsData.map((s, j) => j === edit.si ? { ...s, weight: ew, reps: er } : s) } : e)); setEdit(null); }} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", marginTop: 28, background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Save</button></div></div>}
+      {edit && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setEdit(null)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 20px" }} /><div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, textAlign: "center", marginBottom: 4 }}>{exs[edit.ei].name}</div><div style={{ fontSize: 12, color: C.dim, textAlign: "center", marginBottom: 24, fontFamily: C.mono }}>Set {edit.si + 1}</div><div style={{ display: "flex", flexDirection: "column", gap: 24, alignItems: "center" }}>{!isProgramWorkout && <WeightStepper value={ew} onChange={setEw} color={color} />}<RepBubbles value={er} onChange={setEr} color={color} /></div><button onClick={() => { setExs(p => p.map((e, i) => i === edit.ei ? { ...e, setsData: e.setsData.map((s, j) => j === edit.si ? { ...s, weight: isProgramWorkout ? s.weight : ew, reps: er } : s) } : e)); setEdit(null); }} style={{ width: "100%", padding: "16px", borderRadius: 16, border: "none", marginTop: 28, background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 16, fontWeight: 800, cursor: "pointer" }}>Save</button></div></div>}
 
       {showAdd && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setShowAdd(false)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} /><div style={{ fontSize: 20, fontWeight: 800, color: "#fff", textAlign: "center", marginBottom: 18 }}>Add Exercise</div><div style={{ display: "flex", gap: 6, marginBottom: 18 }}>{Object.keys(EX_LIB).map(k => (<Pill key={k} active={addCat === k} color={color} onClick={() => { setAddCat(k); setAddPg(0); }}>{k}</Pill>))}</div><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>{(exPgs[addPg] || []).map((ex, i) => { const a = exs.some(e => e.name === ex.name); return (<button key={i} disabled={a} onClick={async () => { if (a) return; setPreviewEx({ name: ex.name, equipment: ex.equipment, icon: ex.icon, gifUrl: null, loading: true }); setShowAdd(false); const gifUrl = await getExerciseGif(ex.name); setPreviewEx(p => p ? { ...p, gifUrl, loading: false } : null); }} style={{ padding: "16px 14px", borderRadius: 16, border: a ? `1px solid ${color}30` : `1px solid ${C.border}`, background: a ? `${color}08` : C.card, cursor: a ? "default" : "pointer", textAlign: "left", opacity: a ? 0.5 : 1 }}><div style={{ fontSize: 22, marginBottom: 6 }}>{ex.icon}</div><div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 10, color: C.dim, marginTop: 3, fontFamily: C.mono }}>{ex.equipment}</div></button>); })}</div>{exPgs.length > 1 && <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>{exPgs.map((_, i) => (<button key={i} onClick={() => setAddPg(i)} style={{ width: addPg === i ? 22 : 8, height: 8, borderRadius: 4, border: "none", cursor: "pointer", background: addPg === i ? color : "rgba(255,255,255,0.1)" }} />))}</div>}</div></div>}
+
+      {showIncompleteWarn && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 300, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}
+          onClick={() => { setShowIncompleteWarn(false); setShowReduceSetsPrompt(false); }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 44px" }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 24px" }} />
+            {!showReduceSetsPrompt && (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 8 }}>Heads up</div>
+                <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.5, marginBottom: 28 }}>
+                  You have <span style={{ color: "#fff", fontWeight: 700 }}>{ts - ds} set{ts - ds !== 1 ? "s" : ""}</span> still to log.
+                  Did you finish the workout early?
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <button onClick={() => setShowReduceSetsPrompt(true)} style={{ padding: "15px", borderRadius: 16, border: "none", background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>
+                    Yes, I couldn't finish
+                  </button>
+                  <button onClick={() => { setShowIncompleteWarn(false); saveWorkout(); }} style={{ padding: "15px", borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>
+                    Finish anyway
+                  </button>
+                </div>
+              </>
+            )}
+            {showReduceSetsPrompt && (
+              <>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 8 }}>Adjust future workouts?</div>
+                <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.5, marginBottom: 28 }}>
+                  To keep upcoming sessions achievable, we can reduce the number of sets for this workout type across your remaining weeks.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <button onClick={async () => {
+                    setShowIncompleteWarn(false);
+                    setShowReduceSetsPrompt(false);
+                    await saveWorkout();
+                    try { await reduceSetsFutureWorkouts(template.scheduledWorkoutId); } catch (e) { console.error("reduceSetsFutureWorkouts error:", e); }
+                  }} style={{ padding: "15px", borderRadius: 16, border: "none", background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>
+                    Yes, reduce sets
+                  </button>
+                  <button onClick={() => { setShowIncompleteWarn(false); setShowReduceSetsPrompt(false); saveWorkout(); }} style={{ padding: "15px", borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>
+                    No, keep as planned
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {previewEx && <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", zIndex: 210, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setPreviewEx(null)}><div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 40px" }}><div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} /><div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 6 }}>{previewEx.equipment}</div><div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{previewEx.name}</div></div><div style={{ width: "100%", height: 220, borderRadius: 20, background: C.card, border: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 24, overflow: "hidden", position: "relative" }}>{previewEx.loading ? (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 40 }}>{previewEx.icon}</div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>Loading demo...</div></div>) : previewEx.gifUrl ? (<img src={previewEx.gifUrl} alt={previewEx.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />) : (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 48 }}>{previewEx.icon}</div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>No demo available</div></div>)}</div><div style={{ display: "flex", gap: 10 }}><button onClick={() => { setPreviewEx(null); setShowAdd(true); }} style={{ flex: 1, padding: "14px", borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Back</button><button onClick={() => { setExs(p => [...p, { name: previewEx.name, equipment: previewEx.equipment, lastWeight: 20, lastReps: 10, sets: 3, setsData: [{ weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }, { weight: 20, reps: 10, done: false }] }]); setPreviewEx(null); }} style={{ flex: 2, padding: "14px", borderRadius: 16, border: "none", background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Add to Workout</button></div></div></div>}
     </div>
@@ -1322,13 +1395,25 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [] }) {
 }
 
 /* ═══ HISTORY ═══ */
-function HistoryScreen({ workouts = [], prs = [] }) {
+function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout }) {
   const [m, setM] = useState(false);
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [expandedWorkouts, setExpandedWorkouts] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState(null); // workout id pending delete
+  const [deleting, setDeleting] = useState(false);
 
   const toggleWorkout = (id) => setExpandedWorkouts(p => ({ ...p, [id]: !p[id] }));
+
+  const handleDelete = async (id) => {
+    setDeleting(true);
+    try {
+      await onDeleteWorkout(id);
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(null);
+    }
+  };
 
   useEffect(() => { setM(true); }, []);
 
@@ -1429,6 +1514,25 @@ function HistoryScreen({ workouts = [], prs = [] }) {
                           </div>
                         );
                       })
+                    )}
+                    {onDeleteWorkout && (
+                      <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 12 }}>
+                        {confirmDelete === wo.id ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 12, color: C.dim, flex: 1 }}>Delete this workout?</span>
+                            <button onClick={() => handleDelete(wo.id)} disabled={deleting} style={{ fontSize: 12, fontWeight: 700, color: "#fff", background: "#e53935", border: "none", borderRadius: 8, padding: "5px 14px", cursor: "pointer", opacity: deleting ? 0.6 : 1 }}>
+                              {deleting ? "Deleting…" : "Delete"}
+                            </button>
+                            <button onClick={() => setConfirmDelete(null)} disabled={deleting} style={{ fontSize: 12, color: C.dim, background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, padding: "5px 12px", cursor: "pointer" }}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button onClick={() => setConfirmDelete(wo.id)} style={{ fontSize: 12, color: "#e53935", background: "transparent", border: "none", cursor: "pointer", padding: 0, fontFamily: C.font }}>
+                            Delete workout
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -2384,13 +2488,20 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
 /* ═══ PRE-WORKOUT CHECKIN MODAL ═══ */
 function PreWorkoutCheckin({ muscleGroups, onSubmit, onSkip }) {
   const [ratings, setRatings] = useState({});
+  const [jointComfort, setJointComfort] = useState(0);
+  const [dreading, setDreading] = useState(null);
   const setRating = (mg, val) => setRatings(prev => ({ ...prev, [mg]: val }));
   const emojiScale = ["😊", "😐", "😣", "😖", "🤕"];
   const getEmoji = (val) => emojiScale[Math.min(Math.floor((val - 1) / 2), 4)];
+  const jointEmojis = ["😣", "😖", "😐", "🙂", "💪"];
+
+  const handleSubmit = () => {
+    onSubmit({ muscleRatings: ratings, joint_comfort: jointComfort || undefined, dreading: dreading === true ? true : undefined });
+  };
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ background: "#111113", borderRadius: 24, padding: "28px 24px", maxWidth: 380, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
+      <div style={{ background: "#111113", borderRadius: 24, padding: "28px 24px", maxWidth: 380, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>🔍</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>Pre-Workout Check-in</div>
@@ -2417,9 +2528,54 @@ function PreWorkoutCheckin({ muscleGroups, onSubmit, onSkip }) {
             </div>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+
+        {/* Joint comfort */}
+        <div style={{ marginTop: 20, padding: "16px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>How do your joints feel?</span>
+            <span style={{ fontSize: 18 }}>{jointComfort > 0 ? jointEmojis[jointComfort - 1] : "—"}</span>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[1,2,3,4,5].map(n => (
+              <button key={n} onClick={() => setJointComfort(n)} style={{
+                flex: 1, padding: "8px 0", borderRadius: 8,
+                border: `1px solid ${jointComfort === n ? (n <= 2 ? "#FF6B3C" : C.accent) : C.border}`,
+                background: jointComfort === n ? (n <= 2 ? "#FF6B3C20" : `${C.accent}15`) : "transparent",
+                color: jointComfort === n ? (n <= 2 ? "#FF6B3C" : C.accent) : C.dim,
+                fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: C.mono,
+              }}>{n}</button>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+            <span style={{ fontSize: 10, color: C.dim }}>Painful</span>
+            <span style={{ fontSize: 10, color: C.dim }}>Perfect</span>
+          </div>
+        </div>
+
+        {/* Dread question */}
+        <div style={{ marginTop: 12, padding: "16px", borderRadius: 14, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#fff", marginBottom: 10 }}>Are you dreading this workout?</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={() => setDreading(true)} style={{
+              flex: 1, padding: "10px", borderRadius: 10,
+              border: `1.5px solid ${dreading === true ? "#FF6B3C" : C.border}`,
+              background: dreading === true ? "#FF6B3C20" : "transparent",
+              color: dreading === true ? "#FF6B3C" : C.dim,
+              fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: C.font,
+            }}>Yeah 😩</button>
+            <button onClick={() => setDreading(false)} style={{
+              flex: 1, padding: "10px", borderRadius: 10,
+              border: `1.5px solid ${dreading === false ? C.accent : C.border}`,
+              background: dreading === false ? `${C.accent}20` : "transparent",
+              color: dreading === false ? C.accent : C.dim,
+              fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: C.font,
+            }}>Let's go 💪</button>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           <button onClick={onSkip} style={{ flex: 1, padding: "12px", borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: C.dim, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Skip</button>
-          <button onClick={() => onSubmit(ratings)} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Continue</button>
+          <button onClick={handleSubmit} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Continue</button>
         </div>
       </div>
     </div>
@@ -2835,11 +2991,112 @@ function ProgramOnboardingScreen({ program, profile, prs, onEnroll, onBack }) {
   );
 }
 
+/* ═══ VOLUME DASHBOARD SCREEN ═══ */
+function VolumeDashboardScreen({ enrollment, volumeStandards, onBack }) {
+  if (!enrollment || !enrollment.programs) {
+    return (
+      <div style={{ padding: "20px", textAlign: "center", color: C.dim }}>
+        <div style={{ fontSize: 16, marginBottom: 8 }}>No active program</div>
+        <button onClick={onBack} style={{ padding: "10px 20px", borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", cursor: "pointer", fontFamily: C.font }}>Back</button>
+      </div>
+    );
+  }
+
+  const muscleGroups = ['Chest', 'Back', 'Quads', 'Hamstrings', 'Glutes', 'Shoulders', 'Biceps', 'Triceps', 'Calves', 'Abs'];
+  const week = enrollment.current_week || 1;
+
+  // Derive current week's sets per muscle from scheduled workout prescribed_exercises
+  // We'll show standards + current week target
+  const getWeekTarget = (std) => {
+    if (!std) return null;
+    const midpoint = (a, b) => Math.round((a + b) / 2);
+    switch (week) {
+      case 1: return std.mev_high;
+      case 2: return midpoint(std.mev_high, std.mav_low);
+      case 3: return midpoint(std.mav_low, std.mav_high);
+      case 4: return std.mav_high;
+      case 5: return std.mev_low;
+      default: return std.mev_high;
+    }
+  };
+
+  const getZoneForSets = (sets, std) => {
+    if (!std) return null;
+    if (sets <= std.mev_high) return { label: "least sets needed to grow", color: "#2DD4BF" };
+    if (sets <= std.mav_high) return { label: "best growth range", color: "#A3E635" };
+    return { label: "upper limit before burning out", color: "#F97316" };
+  };
+
+  const activeMuscles = muscleGroups.filter(mg => volumeStandards[mg]);
+
+  return (
+    <div style={{ padding: "0 20px 110px" }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "14px 0 6px", gap: 12 }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Volume by Muscle</div>
+          <div style={{ fontSize: 11, color: C.dim }}>Week {week} targets</div>
+        </div>
+      </div>
+
+      {activeMuscles.length === 0 ? (
+        <div style={{ textAlign: "center", color: C.dim, padding: "40px 20px", fontSize: 14 }}>
+          Volume standards not loaded. Check your program settings.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 12 }}>
+          {activeMuscles.map(mg => {
+            const std = volumeStandards[mg];
+            const target = getWeekTarget(std);
+            const zone = target !== null ? getZoneForSets(target, std) : null;
+            const barTotal = std.mrv_high;
+            const mevPct = (std.mev_high / barTotal) * 100;
+            const mavEndPct = (std.mav_high / barTotal) * 100;
+            const markerPct = target !== null ? Math.min((target / barTotal) * 100, 100) : 0;
+
+            return (
+              <div key={mg} style={{ padding: "16px", borderRadius: 16, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: C.font }}>{mg}</span>
+                  <div style={{ textAlign: "right" }}>
+                    {target !== null && <span style={{ fontSize: 14, fontWeight: 800, color: zone?.color || C.accent, fontFamily: C.mono }}>{target} sets</span>}
+                    {zone && <div style={{ fontSize: 10, color: zone.color, fontFamily: C.mono, marginTop: 1 }}>{zone.label}</div>}
+                  </div>
+                </div>
+                {/* Volume bar */}
+                <div style={{ position: "relative", height: 12, borderRadius: 6, background: "rgba(255,255,255,0.06)", overflow: "visible" }}>
+                  {/* MEV zone (teal) */}
+                  <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${mevPct}%`, borderRadius: "6px 0 0 6px", background: "#2DD4BF30" }} />
+                  {/* MAV zone (yellow-green) */}
+                  <div style={{ position: "absolute", left: `${mevPct}%`, top: 0, height: "100%", width: `${mavEndPct - mevPct}%`, background: "#A3E63530" }} />
+                  {/* MRV zone (orange) */}
+                  <div style={{ position: "absolute", left: `${mavEndPct}%`, top: 0, height: "100%", width: `${100 - mavEndPct}%`, borderRadius: "0 6px 6px 0", background: "#F9731620" }} />
+                  {/* Current week marker */}
+                  {target !== null && (
+                    <div style={{ position: "absolute", top: -2, height: 16, width: 3, borderRadius: 2, background: zone?.color || C.accent, left: `calc(${markerPct}% - 1.5px)`, boxShadow: `0 0 6px ${zone?.color || C.accent}` }} />
+                  )}
+                </div>
+                {/* Legend */}
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
+                  <span style={{ fontSize: 9, color: "#2DD4BF", fontFamily: C.mono }}>{std.mev_low}–{std.mev_high} least needed</span>
+                  <span style={{ fontSize: 9, color: "#A3E635", fontFamily: C.mono }}>{std.mav_low}–{std.mav_high} best</span>
+                  <span style={{ fontSize: 9, color: "#F97316", fontFamily: C.mono }}>{std.mrv_low}–{std.mrv_high} limit</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ═══ PROGRAM SCREEN ═══ */
-function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight }) {
+function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight, scheduleRefreshKey }) {
   const [weekView, setWeekView] = useState(enrollment?.current_week || 1);
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [previewWorkout, setPreviewWorkout] = useState(null);
 
   // Load scheduled workouts for current week view
   useEffect(() => {
@@ -2851,7 +3108,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
       setLoading(false);
     };
     loadSchedule();
-  }, [enrollment, weekView]);
+  }, [enrollment, weekView, scheduleRefreshKey]);
 
   // No enrollment — show program browser
   if (!enrollment) {
@@ -2918,6 +3175,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
             <div style={{ fontSize: 10, color: color, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>Active Program</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{program?.name}</div>
           </div>
+          <button onClick={() => onNav("volumeDashboard")} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, color: C.accent, padding: "6px 12px", fontSize: 11, cursor: "pointer", fontFamily: C.font }}>Volume</button>
           <button onClick={onAbandon} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 10, color: "rgba(255,80,80,0.6)", padding: "6px 12px", fontSize: 11, cursor: "pointer", fontFamily: C.font }}>End</button>
         </div>
       </div>
@@ -2973,7 +3231,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{w.program_days?.name || "Workout"}</div>
                         <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-                          {(w.prescribed_exercises || []).length} exercises · RIR {WEEK_CONFIG[w.week_number]?.rir}
+                          {(w.prescribed_exercises || []).length} exercises · Reps in Reserve {WEEK_CONFIG[w.week_number]?.rir}
                         </div>
                       </div>
                     ) : (
@@ -2991,7 +3249,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
                         }}>Start</button>
                       )}
                       {w.status === "scheduled" && !day.isToday && (
-                        <div style={{ width: 10, height: 10, borderRadius: 5, border: `2px solid ${statusColor}40` }} />
+                        <button onClick={() => setPreviewWorkout(w)} style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, borderRadius: 9, padding: "5px 10px", fontSize: 11, color: C.dim, cursor: "pointer", fontFamily: C.font }}>Preview</button>
                       )}
                     </div>
                   )}
@@ -2999,6 +3257,37 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
               </div>
             );
           })}
+        </div>
+      )}
+      {previewWorkout && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 200, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setPreviewWorkout(null)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 48px", maxHeight: "75vh", overflowY: "auto" }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 20px" }} />
+            <div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 4 }}>Week {previewWorkout.week_number} Preview</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>{previewWorkout.program_days?.name || "Workout"}</div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 20 }}>
+              {(previewWorkout.prescribed_exercises || []).length} exercises · Reps in Reserve {WEEK_CONFIG[previewWorkout.week_number]?.rir}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {(previewWorkout.prescribed_exercises || []).map((ex, i) => {
+                const zoneLabel = getVolumeZoneLabel(ex.volumeZone);
+                const zoneColor = getVolumeZoneColor(ex.volumeZone);
+                return (
+                <div key={i} style={{ padding: "14px 16px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{ex.exercise_name}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {zoneLabel && <span style={{ fontSize: 10, color: zoneColor, fontFamily: C.mono, fontWeight: 700 }}>{zoneLabel}</span>}
+                      <span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ex.sets} × {ex.reps}</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{ex.weight}kg</div>
+                </div>
+                );
+              })}
+            </div>
+            <button onClick={() => setPreviewWorkout(null)} style={{ width: "100%", padding: "14px", borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", marginTop: 20, fontFamily: C.font }}>Close</button>
+          </div>
         </div>
       )}
     </div>
@@ -3033,6 +3322,8 @@ export default function GAIns() {
   // Program state
   const [appPrograms, setAppPrograms] = useState([]);
   const [activeEnrollment, setActiveEnrollment] = useState(null);
+  const [volumeStandards, setVolumeStandards] = useState({});
+  const [scheduleRefreshKey, setScheduleRefreshKey] = useState(0);
   const [scheduledWorkoutForToday, setScheduledWorkoutForToday] = useState(null);
   const [showPreCheckin, setShowPreCheckin] = useState(null); // scheduled workout obj
   const [showPostFeedback, setShowPostFeedback] = useState(null); // { scheduledWorkoutId, workoutId }
@@ -3041,6 +3332,15 @@ export default function GAIns() {
   const [redoingOnboarding, setRedoingOnboarding] = useState(false);
   const [highlightProgramId, setHighlightProgramId] = useState(null);
   useEffect(() => { if (screen !== "program") setHighlightProgramId(null); }, [screen]);
+
+  const handleDeleteWorkout = async (id) => {
+    const workout = appWorkouts.find(w => w.id === id);
+    await deleteWorkout(id, workout?.started_at);
+    setAppWorkouts(prev => prev.filter(w => w.id !== id));
+    setScheduleRefreshKey(k => k + 1);
+    // Refresh enrollment/scheduled state in case the deleted workout was a program workout
+    refreshAppData();
+  };
 
   // Shared data loader — called explicitly after auth is confirmed
   const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
@@ -3054,6 +3354,13 @@ export default function GAIns() {
     try {
       const enr = await withTimeout(getActiveEnrollment(), 10000);
       setActiveEnrollment(enr);
+      // Load volume standards if enrolled in a program
+      if (enr?.programs?.days_per_week) {
+        try {
+          const vs = await getVolumeStandards(enr.programs.days_per_week);
+          setVolumeStandards(vs);
+        } catch (e) { console.error("Failed to load volume standards:", e); }
+      }
       // Check for today's scheduled workout
       if (enr) {
         const today = new Date().toISOString().split('T')[0];
@@ -3329,7 +3636,8 @@ export default function GAIns() {
     }
   };
 
-  const handlePreCheckinSubmit = async (ratings) => {
+  const handlePreCheckinSubmit = async ({ muscleRatings, joint_comfort, dreading } = {}) => {
+    const ratings = muscleRatings || {};
     if (showPreCheckin && Object.keys(ratings).length > 0) {
       try { await saveSorenessRatings(showPreCheckin.id, ratings); } catch (e) { console.error("Error saving soreness:", e); }
     }
@@ -3411,7 +3719,7 @@ export default function GAIns() {
       <div ref={scrollRef} style={{ flex: 1, overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
         {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onDayClick={(d) => { setDayDetailDate(d); nav("dayDetail"); }} todayWorkout={scheduledWorkoutForToday} onStartScheduled={startScheduledWorkout} enrollment={activeEnrollment} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); nav("workout"); }} onBack={() => nav("home")} />}
-        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} onFinish={(prs) => {
+        {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} prs={appPRs} onFinish={(prs) => {
           setPendingSync(getPendingCount());
           // If this was a scheduled workout, mark it completed and show post-feedback
           if (tpl.scheduledWorkoutId) {
@@ -3422,18 +3730,19 @@ export default function GAIns() {
           if (prs && prs.length > 0) { setCelebrationPRs(prs); }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
-        {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} />}
+        {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
-        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} />}
+        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "volumeDashboard" && <VolumeDashboardScreen enrollment={activeEnrollment} volumeStandards={volumeStandards} onBack={() => nav("program")} />}
         {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
         {screen === "dayDetail" && dayDetailDate && <DayDetailScreen date={dayDetailDate} workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
         {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
         {screen === "notifications" && <NotificationScreen onBack={() => nav("home")} />}
       </div>
-      {!["workout", "pricing", "prs", "notifications", "weekDetail", "dayDetail"].includes(screen) && (
+      {!["workout", "pricing", "prs", "notifications", "weekDetail", "dayDetail", "volumeDashboard"].includes(screen) && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "calc(72px + env(safe-area-inset-bottom, 0px))", background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "flex-start", paddingTop: 10 }}>
           {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : t.id === "program" ? (activeEnrollment ? C.accent : C.dim) : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 12px" }}><span style={{ fontSize: 18, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>

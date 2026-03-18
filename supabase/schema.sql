@@ -898,3 +898,80 @@ CREATE POLICY "Users insert own program day exercises"
       SELECT pd.id FROM program_days pd
       JOIN programs p ON p.id = pd.program_id
       WHERE p.user_id = auth.uid()));
+
+-- ─── VOLUME STANDARDS (MEV/MAV/MRV reference table) ──────────
+-- Stores science-based per-session set ranges per muscle group per training frequency.
+-- Named internally with MEV/MAV/MRV; UI shows plain-language equivalents only.
+
+CREATE TABLE public.muscle_volume_standards (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    muscle_group  TEXT NOT NULL CHECK (muscle_group IN (
+                    'Chest','Back','Quads','Hamstrings','Glutes',
+                    'Shoulders','Biceps','Triceps','Calves','Abs')),
+    days_per_week SMALLINT NOT NULL CHECK (days_per_week IN (3,4,5,6)),
+    scope         TEXT NOT NULL CHECK (scope IN ('weekly','per_session')),
+    mev_low       SMALLINT NOT NULL,
+    mev_high      SMALLINT NOT NULL,
+    mav_low       SMALLINT NOT NULL,
+    mav_high      SMALLINT NOT NULL,
+    mrv_low       SMALLINT NOT NULL,
+    mrv_high      SMALLINT NOT NULL,
+    UNIQUE (muscle_group, days_per_week, scope)
+);
+ALTER TABLE public.muscle_volume_standards ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Authenticated users read volume standards"
+    ON public.muscle_volume_standards FOR SELECT TO authenticated USING (true);
+CREATE INDEX idx_vol_standards_lookup
+    ON public.muscle_volume_standards (muscle_group, days_per_week, scope);
+
+-- Seed per_session volume standards (science-based RP-style estimates)
+INSERT INTO public.muscle_volume_standards
+    (muscle_group, days_per_week, scope, mev_low, mev_high, mav_low, mav_high, mrv_low, mrv_high)
+VALUES
+-- 3 days/week (full body — each muscle hit 3x/week)
+('Chest',      3, 'per_session', 1, 2, 2, 3, 4, 5),
+('Back',       3, 'per_session', 1, 2, 2, 3, 4, 5),
+('Quads',      3, 'per_session', 1, 2, 2, 3, 4, 5),
+('Hamstrings', 3, 'per_session', 1, 2, 2, 3, 3, 4),
+('Glutes',     3, 'per_session', 1, 2, 2, 3, 3, 4),
+('Shoulders',  3, 'per_session', 1, 2, 2, 3, 4, 5),
+('Biceps',     3, 'per_session', 1, 2, 2, 3, 3, 4),
+('Triceps',    3, 'per_session', 1, 2, 2, 3, 3, 4),
+('Calves',     3, 'per_session', 1, 2, 2, 4, 4, 6),
+('Abs',        3, 'per_session', 1, 2, 2, 3, 3, 4),
+
+-- 4 days/week (upper/lower — each muscle 2x/week)
+('Chest',      4, 'per_session', 2, 3, 3, 4, 5, 6),
+('Back',       4, 'per_session', 2, 3, 3, 4, 5, 6),
+('Quads',      4, 'per_session', 2, 3, 3, 4, 5, 6),
+('Hamstrings', 4, 'per_session', 2, 3, 3, 4, 4, 5),
+('Glutes',     4, 'per_session', 2, 3, 3, 4, 4, 5),
+('Shoulders',  4, 'per_session', 2, 3, 3, 4, 5, 6),
+('Biceps',     4, 'per_session', 2, 3, 3, 4, 4, 5),
+('Triceps',    4, 'per_session', 2, 3, 3, 4, 4, 5),
+('Calves',     4, 'per_session', 2, 3, 3, 5, 5, 7),
+('Abs',        4, 'per_session', 2, 3, 3, 4, 4, 5),
+
+-- 5 days/week (5-day split — most muscles hit 1-2x/week)
+('Chest',      5, 'per_session', 3, 4, 4, 5, 6, 7),
+('Back',       5, 'per_session', 3, 4, 4, 5, 6, 7),
+('Quads',      5, 'per_session', 3, 4, 4, 5, 6, 7),
+('Hamstrings', 5, 'per_session', 2, 3, 3, 4, 5, 6),
+('Glutes',     5, 'per_session', 2, 3, 3, 4, 5, 6),
+('Shoulders',  5, 'per_session', 3, 4, 4, 5, 6, 7),
+('Biceps',     5, 'per_session', 2, 3, 3, 4, 5, 6),
+('Triceps',    5, 'per_session', 2, 3, 3, 4, 5, 6),
+('Calves',     5, 'per_session', 3, 4, 4, 6, 6, 8),
+('Abs',        5, 'per_session', 2, 3, 3, 4, 4, 5),
+
+-- 6 days/week (PPL — each muscle 2x/week with more total volume)
+('Chest',      6, 'per_session', 2, 3, 3, 4, 5, 6),
+('Back',       6, 'per_session', 2, 3, 3, 4, 5, 6),
+('Quads',      6, 'per_session', 2, 3, 3, 4, 5, 6),
+('Hamstrings', 6, 'per_session', 2, 3, 3, 4, 4, 5),
+('Glutes',     6, 'per_session', 2, 3, 3, 4, 4, 5),
+('Shoulders',  6, 'per_session', 2, 3, 3, 4, 5, 6),
+('Biceps',     6, 'per_session', 2, 3, 3, 4, 4, 5),
+('Triceps',    6, 'per_session', 2, 3, 3, 4, 4, 5),
+('Calves',     6, 'per_session', 2, 3, 3, 5, 5, 7),
+('Abs',        6, 'per_session', 2, 3, 3, 4, 4, 5);

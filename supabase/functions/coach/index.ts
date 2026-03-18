@@ -117,10 +117,34 @@ Deno.serve(async (req: Request) => {
       throw new Error("ANTHROPIC_API_KEY not configured");
     }
 
+    // Build volume context from latest scheduled workout prescribed exercises
+    let volumeContext = "";
+    try {
+      const { data: latestSW } = await supabaseAdmin
+        .from("scheduled_workouts")
+        .select("prescribed_exercises, week_number")
+        .eq("user_id", user.id)
+        .eq("status", "scheduled")
+        .order("scheduled_date", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (latestSW?.prescribed_exercises?.length) {
+        const zoneLabels: Record<string, string> = { MEV: "building up", MAV: "best growth range", MRV: "near upper limit — recommend recovery focus" };
+        const lines = (latestSW.prescribed_exercises as Array<{exercise_name: string; sets: number; volumeZone?: string}>)
+          .filter(ex => ex.volumeZone)
+          .map(ex => `${ex.exercise_name}: ${ex.sets} sets · ${zoneLabels[ex.volumeZone!] || ex.volumeZone}`);
+        if (lines.length > 0) {
+          volumeContext = `\nCurrent week volume:\n${lines.join("\n")}`;
+        }
+      }
+    } catch (e) {
+      // Volume context is optional — don't fail if it errors
+    }
+
     const systemPrompt = `You are a concise elite AI strength coach inside a gym app. You have the user's real training data below. Be direct, specific, actionable. Use numbers when possible. Under 150 words. Short paragraphs only, no markdown, no bullet points, no headers.
 
 USER DATA:
-${userContext || "New user — no workout data yet. Give general advice and encourage them to start tracking."}`;
+${userContext || "New user — no workout data yet. Give general advice and encourage them to start tracking."}${volumeContext}`;
 
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
