@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins } from "./lib/supabase";
 import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
@@ -37,7 +37,24 @@ const AI_PROMPTS = {
 };
 
 /* ═══ THEME ═══ */
-const C = { accent: "#DFFF3C", bg: "#08080A", ai: "#A47BFF", card: "rgba(255,255,255,0.035)", border: "rgba(255,255,255,0.055)", dim: "rgba(255,255,255,0.3)", font: "'Outfit', sans-serif", mono: "'JetBrains Mono', monospace" };
+const THEMES = {
+  aurora: {
+    accent: "#A78BFA", accent2: "#F472B6", bg: "#0E0F14",
+    ai: "#A47BFF", card: "#1A1C24", border: "rgba(255,255,255,0.08)",
+    dim: "#A1A1AA", font: "'Outfit', sans-serif", mono: "'JetBrains Mono', monospace",
+  },
+  galaxy: {
+    accent: "#6C63FF", accent2: "#A78BFA", bg: "#12102A",
+    ai: "#A47BFF", card: "#1E1B3A", border: "rgba(255,255,255,0.10)",
+    dim: "#9B98C4", font: "'Outfit', sans-serif", mono: "'JetBrains Mono', monospace",
+  },
+  neon: {
+    accent: "#DFFF3C", accent2: "#3CFFF0", bg: "#08080A",
+    ai: "#A47BFF", card: "rgba(255,255,255,0.035)", border: "rgba(255,255,255,0.055)",
+    dim: "rgba(255,255,255,0.3)", font: "'Outfit', sans-serif", mono: "'JetBrains Mono', monospace",
+  },
+};
+const C = { ...THEMES.aurora };
 
 /* ═══ COMPONENTS ═══ */
 function MiniChart({ data, color = C.accent, h = 48 }) {
@@ -604,7 +621,7 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
         disabled={!canNext() || saving}
         style={{
           width: "100%", padding: "16px", borderRadius: 16, border: "none",
-          background: canNext() ? `linear-gradient(135deg, ${C.accent}, #C8E030)` : "rgba(255,255,255,0.06)",
+          background: canNext() ? `linear-gradient(135deg, ${C.accent}, ${C.accent2})` : "rgba(255,255,255,0.06)",
           color: canNext() ? C.bg : "rgba(255,255,255,0.2)",
           fontSize: 16, fontWeight: 800, fontFamily: C.font,
           cursor: canNext() && !saving ? "pointer" : "default",
@@ -819,7 +836,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
         <div><div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</div><div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>{(() => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; })()}</div></div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {plan !== "free" && <span style={{ padding: "3px 8px", borderRadius: 6, background: `${PLANS[plan].color}20`, color: PLANS[plan].color, fontSize: 9, fontWeight: 800, fontFamily: C.mono }}>{PLANS[plan].badge}</span>}
-          <button onClick={onProfileClick} style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font, border: "none", cursor: "pointer", padding: 0 }}>{userInitial}</button>
+          <button onClick={onProfileClick} style={{ width: 42, height: 42, borderRadius: 14, background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: C.bg, fontFamily: C.font, border: "none", cursor: "pointer", padding: 0 }}>{userInitial}</button>
         </div>
       </div>
       {/* Today's scheduled workout card */}
@@ -833,7 +850,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
           <div style={{ width: 44, height: 44, borderRadius: 14, background: `${enrollment?.programs?.color || C.accent}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: enrollment?.programs?.color || C.accent, flexShrink: 0 }}>▶</div>
         </button>
       )}
-      <button onClick={onStart} style={{ width: "100%", padding: "20px 22px", border: "none", borderRadius: 22, background: `linear-gradient(135deg, ${C.accent} 0%, #C8E030 100%)`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", overflow: "hidden" }}>
+      <button onClick={onStart} style={{ width: "100%", padding: "20px 22px", border: "none", borderRadius: 22, background: `linear-gradient(135deg, ${C.accent} 0%, ${C.accent2} 100%)`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", overflow: "hidden" }}>
         <div style={{ textAlign: "left", position: "relative", zIndex: 1 }}><div style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Tap to begin</div><div style={{ fontSize: 21, fontWeight: 800, color: C.bg, fontFamily: C.font }}>{todayWorkout ? "Free Workout" : "Start Workout"}</div></div>
         <div style={{ width: 50, height: 50, borderRadius: 16, background: "rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, position: "relative", zIndex: 1 }}>▶</div>
       </button>
@@ -844,7 +861,6 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
       </button>
       <div style={{ display: "flex", justifyContent: "space-between", padding: "0 8px", marginBottom: 22 }}>{["M","T","W","T","F","S","S"].map((d, i) => (<div key={i} onClick={() => wd[i] && onDayClick && onDayClick(wd[i])} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, cursor: wd[i] ? "pointer" : "default" }}><div style={{ fontSize: 10, fontFamily: C.mono, color: i === todayIdx ? C.accent : C.dim, fontWeight: 600 }}>{d}</div><div style={{ width: 28, height: 28, borderRadius: 10, background: i === todayIdx ? `${C.accent}20` : wd[i] ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.02)", border: i === todayIdx ? `1.5px solid ${C.accent}50` : `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: wd[i] ? C.accent : "rgba(255,255,255,0.1)" }}>{wd[i] ? "✓" : ""}</div></div>))}</div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>{stats.map((s, i) => (<div key={i} onClick={s.action} style={{ background: C.card, borderRadius: 16, padding: "14px 16px", border: s.action ? `1.5px solid ${C.accent}30` : `1px solid ${C.border}`, cursor: s.action ? "pointer" : "default", transition: "border-color .2s" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.label}{s.action && <span style={{ marginLeft: 4, color: C.accent, fontSize: 9 }}>→</span>}</div><div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{s.val}</div><div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{s.sub}</div></div>))}</div>
-      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Volume Trend</div><div style={{ fontSize: 12, color: C.accent, fontWeight: 700 }}>{chartData.length > 1 && chartData[0].v > 0 ? ((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100 >= 0 ? "↑" : "↓") + " " + Math.abs(Math.round((chartData[chartData.length - 1].v - chartData[0].v) / chartData[0].v * 100)) + "%" : ""}</div></div><MiniChart data={chartData} /></div>
       <div><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Personal Records</div><div onClick={() => onNav("prs")} style={{ fontSize: 12, color: C.accent, cursor: "pointer", fontWeight: 600 }}>See All →</div></div>{prs.filter(p => (p.pr_type || "1rm") === "1rm").slice(0, 3).map((p, i) => (<div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "13px 15px", borderRadius: 14, marginBottom: 7, background: C.card, border: `1px solid ${C.border}` }}><div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{p.exercise_name}</div><div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 16, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{Math.round(p.estimated_1rm || p.weight_kg)}kg</span><span style={{ fontSize: 12, color: C.dim }}>1RM</span></div></div>))}</div>
     </div>
   );
@@ -1053,21 +1069,19 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
                 .eq("user_id", userId)
                 .eq("exercise_name", exerciseName)
                 .eq("pr_type", "1rm")
+                .eq("is_active", true)
                 .limit(1);
 
-              if (existing?.length) {
-                if (best1rm.e1rm > existing[0].estimated_1rm) {
-                  await supabase.from("personal_records").update({
-                    weight_kg: best1rm.s.weight_kg, reps: best1rm.s.reps,
-                    workout_id: workout.id, achieved_at: new Date().toISOString()
-                  }).eq("id", existing[0].id);
-                  newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
+              const prevE1rm = existing?.[0]?.estimated_1rm ?? 0;
+              if (best1rm.e1rm > prevE1rm) {
+                // Deactivate old PR row, insert new one
+                if (existing?.length) {
+                  await supabase.from("personal_records").update({ is_active: false }).eq("id", existing[0].id);
                 }
-              } else {
                 await supabase.from("personal_records").insert({
                   user_id: userId, exercise_name: exerciseName,
                   weight_kg: best1rm.s.weight_kg, reps: best1rm.s.reps,
-                  pr_type: "1rm", workout_id: workout.id
+                  pr_type: "1rm", workout_id: workout.id, is_active: true
                 });
                 newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
               }
@@ -1081,21 +1095,19 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user }) {
                 .eq("user_id", userId)
                 .eq("exercise_name", exerciseName)
                 .eq("pr_type", "volume")
+                .eq("is_active", true)
                 .limit(1);
 
-              if (existing?.length) {
-                if (bestVol.vol > (existing[0].set_volume || 0)) {
-                  await supabase.from("personal_records").update({
-                    weight_kg: bestVol.s.weight_kg, reps: bestVol.s.reps,
-                    workout_id: workout.id, achieved_at: new Date().toISOString()
-                  }).eq("id", existing[0].id);
-                  newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
+              const prevVol = existing?.[0]?.set_volume ?? 0;
+              if (bestVol.vol > prevVol) {
+                // Deactivate old PR row, insert new one
+                if (existing?.length) {
+                  await supabase.from("personal_records").update({ is_active: false }).eq("id", existing[0].id);
                 }
-              } else {
                 await supabase.from("personal_records").insert({
                   user_id: userId, exercise_name: exerciseName,
                   weight_kg: bestVol.s.weight_kg, reps: bestVol.s.reps,
-                  pr_type: "volume", workout_id: workout.id
+                  pr_type: "volume", workout_id: workout.id, is_active: true
                 });
                 newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
               }
@@ -2074,7 +2086,7 @@ function NotificationScreen({ onBack }) {
   );
 }
 
-function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding }) {
+function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange }) {
   if (!user) return null;
 
   const accountAge = profile?.created_at
@@ -2092,7 +2104,7 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
 
         {/* Avatar */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 20, background: `linear-gradient(135deg, ${C.accent}, #B8CC39)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: C.bg, fontFamily: C.font }}>
+          <div style={{ width: 64, height: 64, borderRadius: 20, background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, fontWeight: 800, color: C.bg, fontFamily: C.font }}>
             {userInitial}
           </div>
         </div>
@@ -2130,6 +2142,32 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
         <div style={{ background: `${planData.color}08`, borderRadius: 16, padding: "14px", border: `1px solid ${planData.color}30`, marginBottom: 16 }}>
           <div style={{ fontSize: 12, color: planData.color, fontWeight: 700, textAlign: "center" }}>
             {plan === "free" ? "5 AI queries/day" : plan === "pro" ? "30 AI queries/day" : "Unlimited AI queries"}
+          </div>
+        </div>
+
+        {/* App Theme */}
+        <div style={{ background: C.card, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 }}>
+            App Theme
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { id: "aurora", label: "Aurora", color: "#A78BFA" },
+              { id: "galaxy", label: "Galaxy", color: "#6C63FF" },
+              { id: "neon",   label: "Neon",   color: "#DFFF3C" },
+            ].map(t => (
+              <button key={t.id} onClick={() => onThemeChange(t.id)} style={{
+                flex: 1, padding: "10px 0", borderRadius: 10, fontFamily: C.font, fontSize: 14, fontWeight: 600, cursor: "pointer",
+                border: `1.5px solid ${activeTheme === t.id ? t.color : C.border}`,
+                background: activeTheme === t.id ? `${t.color}18` : C.card,
+                color: activeTheme === t.id ? t.color : C.dim,
+              }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.dim, marginTop: 8, textAlign: "center", fontFamily: C.mono }}>
+            {{ aurora: "Purple aurora — default", galaxy: "Deep indigo — bold", neon: "Neon lime — classic" }[activeTheme]}
           </div>
         </div>
 
@@ -2248,7 +2286,7 @@ function PreWorkoutCheckin({ muscleGroups, onSubmit, onSkip }) {
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={onSkip} style={{ flex: 1, padding: "12px", borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: C.dim, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Skip</button>
-          <button onClick={() => onSubmit(ratings)} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, #C8E030)`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Continue</button>
+          <button onClick={() => onSubmit(ratings)} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>Continue</button>
         </div>
       </div>
     </div>
@@ -2257,32 +2295,49 @@ function PreWorkoutCheckin({ muscleGroups, onSubmit, onSkip }) {
 
 /* ═══ POST-WORKOUT FEEDBACK MODAL ═══ */
 function PostWorkoutFeedback({ onSubmit, onSkip }) {
+  const [step, setStep] = useState(1);
   const [pump, setPump] = useState(0);
-  const emojiScale = ["😐", "🙂", "😊", "😄", "💪", "🔥", "🔥", "💥", "🤯", "🏆"];
+  const [difficulty, setDifficulty] = useState(0);
+  const pumpEmojis = ["😐", "🙂", "😊", "😄", "💪", "🔥", "🔥", "💥", "🤯", "🏆"];
+  const difficultyEmojis = ["😴", "🥱", "😌", "🙂", "😤", "💪", "🔥", "🥵", "💀", "☠️"];
+
+  const isPump = step === 1;
+  const rating = isPump ? pump : difficulty;
+  const setRating = isPump ? setPump : setDifficulty;
+  const emojis = isPump ? pumpEmojis : difficultyEmojis;
+  const title = isPump ? "How was the pump?" : "How was the difficulty?";
+  const subtitle = isPump ? "Rate overall pump 1-10" : "Rate overall effort 1-10";
+  const defaultEmoji = isPump ? "💪" : "⚡";
+  const label = isPump
+    ? (rating === 0 ? "Tap a number" : rating <= 3 ? "Low pump" : rating <= 6 ? "Decent pump" : "Great pump!")
+    : (rating === 0 ? "Tap a number" : rating <= 3 ? "Too easy" : rating <= 6 ? "Just right" : rating <= 8 ? "Challenging" : "Brutal");
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ background: "#111113", borderRadius: 24, padding: "28px 24px", maxWidth: 380, width: "100%", textAlign: "center" }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>{pump > 0 ? emojiScale[pump - 1] : "💪"}</div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>How was the pump?</div>
-        <div style={{ fontSize: 13, color: C.dim, marginBottom: 24 }}>Rate overall pump 1-10</div>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 }}>Step {step} of 2</div>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>{rating > 0 ? emojis[rating - 1] : defaultEmoji}</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>{title}</div>
+        <div style={{ fontSize: 13, color: C.dim, marginBottom: 24 }}>{subtitle}</div>
         <div style={{ display: "flex", gap: 4, justifyContent: "center", marginBottom: 8 }}>
           {[1,2,3,4,5,6,7,8,9,10].map(n => (
-            <button key={n} onClick={() => setPump(n)} style={{
+            <button key={n} onClick={() => setRating(n)} style={{
               width: 32, height: 40, borderRadius: 8,
-              border: `1.5px solid ${pump === n ? C.accent : C.border}`,
-              background: pump === n ? `${C.accent}20` : "transparent",
-              color: pump === n ? C.accent : C.dim,
+              border: `1.5px solid ${rating === n ? C.accent : C.border}`,
+              background: rating === n ? `${C.accent}20` : "transparent",
+              color: rating === n ? C.accent : C.dim,
               fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: C.mono,
             }}>{n}</button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginBottom: 20 }}>
-          {pump === 0 ? "Tap a number" : pump <= 3 ? "Low pump" : pump <= 6 ? "Decent pump" : "Great pump!"}
-        </div>
+        <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginBottom: 20 }}>{label}</div>
         <div style={{ display: "flex", gap: 10 }}>
           <button onClick={onSkip} style={{ flex: 1, padding: "12px", borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: C.dim, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Skip</button>
-          <button onClick={() => { if (pump > 0) onSubmit(pump); }} disabled={pump === 0} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: pump > 0 ? `linear-gradient(135deg, ${C.accent}, #C8E030)` : "rgba(255,255,255,0.06)", color: pump > 0 ? C.bg : "rgba(255,255,255,0.2)", fontSize: 14, fontWeight: 800, cursor: pump > 0 ? "pointer" : "default", fontFamily: C.font }}>Submit</button>
+          {isPump ? (
+            <button onClick={() => { setStep(2); }} disabled={pump === 0} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: pump > 0 ? `linear-gradient(135deg, ${C.accent}, ${C.accent2})` : "rgba(255,255,255,0.06)", color: pump > 0 ? C.bg : "rgba(255,255,255,0.2)", fontSize: 14, fontWeight: 800, cursor: pump > 0 ? "pointer" : "default", fontFamily: C.font }}>Next →</button>
+          ) : (
+            <button onClick={() => { onSubmit({ pump, difficulty }); }} disabled={difficulty === 0} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: difficulty > 0 ? `linear-gradient(135deg, ${C.accent}, ${C.accent2})` : "rgba(255,255,255,0.06)", color: difficulty > 0 ? C.bg : "rgba(255,255,255,0.2)", fontSize: 14, fontWeight: 800, cursor: difficulty > 0 ? "pointer" : "default", fontFamily: C.font }}>Submit</button>
+          )}
         </div>
       </div>
     </div>
@@ -2338,7 +2393,7 @@ function ProgressCheckinModal({ profile, enrollmentId, onSubmit, onClose }) {
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ flex: 1, padding: "12px", borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: C.dim, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>Later</button>
-          <button onClick={handleSubmit} disabled={saving} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, #C8E030)`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: saving ? "wait" : "pointer", fontFamily: C.font }}>{saving ? "Saving..." : "Save"}</button>
+          <button onClick={handleSubmit} disabled={saving} style={{ flex: 2, padding: "12px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg, fontSize: 14, fontWeight: 800, cursor: saving ? "wait" : "pointer", fontFamily: C.font }}>{saving ? "Saving..." : "Save"}</button>
         </div>
       </div>
     </div>
@@ -2346,26 +2401,18 @@ function ProgressCheckinModal({ profile, enrollmentId, onSubmit, onClose }) {
 }
 
 /* ═══ PROGRAM ONBOARDING ═══ */
-function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
+function ProgramOnboardingScreen({ program, profile, prs, onEnroll, onBack }) {
   const [step, setStep] = useState(0);
-  const [selectedProgram, setSelectedProgram] = useState(null);
   const [trainingDays, setTrainingDays] = useState([1, 2, 3, 4, 5]); // Mon-Fri default
   const [startingWeights, setStartingWeights] = useState({});
   const [checkinFreq, setCheckinFreq] = useState("weekly");
+  const [startOption, setStartOption] = useState("next_monday");
+  const [customDate, setCustomDate] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const totalSteps = 5;
+  const selectedProgram = program;
+  const totalSteps = 4;
   const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-  // Auto-recommend
-  const recommended = recommendPrograms(profile);
-
-  // Sort programs by recommendation
-  const sortedPrograms = [...programs].sort((a, b) => {
-    const ai = recommended.indexOf(a.slug);
-    const bi = recommended.indexOf(b.slug);
-    return ai - bi;
-  });
 
   // Initialize starting weights from PRs
   useEffect(() => {
@@ -2380,8 +2427,7 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
   }, [prs]);
 
   const canNext = () => {
-    if (step === 0) return selectedProgram !== null;
-    if (step === 1) return trainingDays.length === selectedProgram?.days_per_week;
+    if (step === 0) return trainingDays.length === selectedProgram?.days_per_week;
     return true;
   };
 
@@ -2389,20 +2435,58 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
     setTrainingDays(prev => prev.includes(d) ? prev.filter(x => x !== d) : [...prev, d].sort());
   };
 
+  const getNextMonday = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+    const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
+    const d = new Date(now);
+    d.setDate(d.getDate() + daysUntilMonday);
+    return d;
+  };
+
+  const getThisMonday = () => {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+    const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const d = new Date(now);
+    d.setDate(d.getDate() + offset);
+    return d;
+  };
+
+  const snapToMonday = (dateStr) => {
+    const d = new Date(dateStr + "T00:00:00");
+    const dayOfWeek = d.getDay();
+    const offset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    d.setDate(d.getDate() + offset);
+    return d;
+  };
+
+  const resolveStartDate = () => {
+    if (startOption === "this_monday") return getThisMonday().toISOString().split('T')[0];
+    if (startOption === "next_monday") return getNextMonday().toISOString().split('T')[0];
+    // Custom date — snap to Monday
+    if (customDate) return snapToMonday(customDate).toISOString().split('T')[0];
+    return getNextMonday().toISOString().split('T')[0];
+  };
+
+  const formatDateLabel = (d) => {
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return "Today";
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  const nextMondayDate = getNextMonday();
+  const thisMondayDate = getThisMonday();
+  const isAlreadyMonday = new Date().getDay() === 1;
+
   const handleEnroll = async () => {
     setSaving(true);
     try {
       const settings = { trainingDays, startingWeights, checkin_frequency: checkinFreq };
-      const enrollment = await enrollInProgram(selectedProgram.id, settings);
-      // Generate 5 weeks of scheduled workouts
       const days = (selectedProgram.program_days || []).sort((a, b) => a.sort_order - b.sort_order);
-      // Start from next Monday
-      const now = new Date();
-      const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
-      const daysUntilMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek;
-      const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() + daysUntilMonday);
-      await generateSchedule(enrollment.id, days, startDate.toISOString().split('T')[0], settings);
+      const startDateStr = resolveStartDate();
+      const enrollment = await enrollInProgram(selectedProgram.id, settings, startDateStr);
+      await generateSchedule(enrollment.id, days, startDateStr, settings);
       onEnroll(enrollment);
     } catch (e) {
       console.error("Enrollment error:", e);
@@ -2431,41 +2515,8 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
         </div>
       </div>
 
-      {/* Step 0 — Select program */}
-      {step === 0 && (
-        <div>
-          <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Choose Program</div>
-          <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Select your split</div>
-          <div style={{ fontSize: 13, color: C.dim, marginBottom: 20 }}>Recommended based on your profile</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {sortedPrograms.map((p, i) => {
-              const isRec = recommended[0] === p.slug;
-              const isSel = selectedProgram?.id === p.id;
-              return (
-                <button key={p.id} onClick={() => setSelectedProgram(p)} style={{
-                  width: "100%", padding: "16px", borderRadius: 20,
-                  border: `2px solid ${isSel ? p.color : C.border}`,
-                  background: isSel ? `${p.color}10` : C.card,
-                  cursor: "pointer", textAlign: "left", position: "relative", transition: "all 0.2s"
-                }}>
-                  {isRec && <div style={{ position: "absolute", top: 10, right: 12, padding: "2px 8px", borderRadius: 6, background: C.accent, fontSize: 9, fontWeight: 800, color: C.bg, fontFamily: C.mono }}>RECOMMENDED</div>}
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 28 }}>{p.icon}</span>
-                    <div>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: isSel ? p.color : "#fff", fontFamily: C.font }}>{p.name}</div>
-                      <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{p.days_per_week} days/week · {p.duration_weeks} weeks</div>
-                      <div style={{ fontSize: 11, color: C.dim, marginTop: 4, lineHeight: 1.4 }}>{p.description}</div>
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Step 1 — Choose training days */}
-      {step === 1 && selectedProgram && (
+      {/* Step 0 — Choose training days */}
+      {step === 0 && selectedProgram && (
         <div>
           <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Schedule</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Training days</div>
@@ -2501,11 +2552,50 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
               })}
             </div>
           )}
+
+          {/* Start date selector */}
+          {trainingDays.length === selectedProgram.days_per_week && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 10, fontFamily: C.font }}>When do you want to start?</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { id: "next_monday", label: isAlreadyMonday ? "Today" : "Next Monday", desc: formatDateLabel(nextMondayDate), icon: "📅" },
+                  ...(!isAlreadyMonday ? [{ id: "this_monday", label: "This week", desc: `From ${formatDateLabel(thisMondayDate)} — past days skipped`, icon: "⚡" }] : []),
+                  { id: "custom", label: "Pick a date", desc: customDate ? `Starts Monday of ${new Date(customDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} week` : "Choose a custom start", icon: "🗓️" },
+                ].map(opt => (
+                  <button key={opt.id} onClick={() => setStartOption(opt.id)} style={{
+                    padding: "14px 16px", borderRadius: 14,
+                    border: `2px solid ${startOption === opt.id ? C.accent : C.border}`,
+                    background: startOption === opt.id ? `${C.accent}12` : C.card,
+                    cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "all 0.2s",
+                  }}>
+                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: startOption === opt.id ? C.accent : "#fff", fontFamily: C.font }}>{opt.label}</div>
+                      <div style={{ fontSize: 11, color: C.dim }}>{opt.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {startOption === "custom" && (
+                <input
+                  type="date"
+                  value={customDate}
+                  onChange={e => setCustomDate(e.target.value)}
+                  style={{
+                    width: "100%", marginTop: 10, padding: "12px 14px", borderRadius: 12,
+                    border: `1px solid ${C.border}`, background: C.card, color: "#fff",
+                    fontSize: 14, fontFamily: C.font, boxSizing: "border-box",
+                  }}
+                />
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Step 2 — Starting weights */}
-      {step === 2 && (
+      {/* Step 1 — Starting weights */}
+      {step === 1 && (
         <div>
           <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Starting Weights</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Set your weights</div>
@@ -2525,8 +2615,8 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
         </div>
       )}
 
-      {/* Step 3 — Check-in frequency */}
-      {step === 3 && (
+      {/* Step 2 — Check-in frequency */}
+      {step === 2 && (
         <div>
           <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Progress Tracking</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Check-in frequency</div>
@@ -2550,8 +2640,8 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
         </div>
       )}
 
-      {/* Step 4 — Summary */}
-      {step === 4 && selectedProgram && (
+      {/* Step 3 — Summary */}
+      {step === 3 && selectedProgram && (
         <div>
           <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 8 }}>Summary</div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 20 }}>Ready to start?</div>
@@ -2568,7 +2658,8 @@ function ProgramOnboardingScreen({ programs, profile, prs, onEnroll, onBack }) {
                 <span key={d} style={{ padding: "4px 10px", borderRadius: 8, background: `${selectedProgram.color}18`, color: selectedProgram.color, fontSize: 11, fontWeight: 700, fontFamily: C.mono }}>{dayNames[d - 1]}</span>
               ))}
             </div>
-            <div style={{ fontSize: 12, color: C.dim }}>Check-in: {checkinFreq}</div>
+            <div style={{ fontSize: 12, color: C.dim }}>Starts: Monday, {new Date(resolveStartDate() + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+            <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>Check-in: {checkinFreq}</div>
           </div>
           {/* Week overview */}
           <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
@@ -2611,15 +2702,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
     if (!enrollment) return;
     const loadSchedule = async () => {
       setLoading(true);
-      const startedAt = new Date(enrollment.started_at);
-      const weekStart = new Date(startedAt);
-      weekStart.setDate(weekStart.getDate() + (weekView - 1) * 7);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6);
-      const data = await getScheduledWorkouts(
-        weekStart.toISOString().split('T')[0],
-        weekEnd.toISOString().split('T')[0]
-      );
+      const data = await getScheduledWorkouts(null, null, enrollment.id, weekView);
       setSchedule(data || []);
       setLoading(false);
     };
@@ -2778,6 +2861,9 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
 
 /* ═══ APP SHELL ═══ */
 export default function GAIns() {
+  const [activeTheme, setActiveTheme] = useState(
+    () => localStorage.getItem("theme") || "aurora"
+  );
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -2823,7 +2909,7 @@ export default function GAIns() {
       // Check for today's scheduled workout
       if (enr) {
         const today = new Date().toISOString().split('T')[0];
-        const todayWorkouts = await getScheduledWorkouts(today, today);
+        const todayWorkouts = await getScheduledWorkouts(today, today, enr.id);
         const todayScheduled = todayWorkouts.find(w => w.status === 'scheduled');
         setScheduledWorkoutForToday(todayScheduled || null);
       } else {
@@ -3041,6 +3127,13 @@ export default function GAIns() {
     );
   }
 
+  Object.assign(C, THEMES[activeTheme]);
+
+  const handleThemeChange = (name) => {
+    localStorage.setItem("theme", name);
+    setActiveTheme(name);
+  };
+
   const nav = (t, replace) => {
     setTab(["home","coach","program","history","stats"].includes(t) ? t : null);
     setScreen(t);
@@ -3052,7 +3145,7 @@ export default function GAIns() {
   const tabs = [{ id: "home", icon: "⌂", label: "Home" }, { id: "program", icon: "📋", label: "Program" }, { id: "coach", icon: "🧠", label: "Coach" }, { id: "history", icon: "☰", label: "History" }, { id: "stats", icon: "◈", label: "Stats" }];
 
   // Program helpers
-  const startScheduledWorkout = (scheduledWorkout) => {
+  const startScheduledWorkout = async (scheduledWorkout) => {
     // Build a template-like object from prescribed exercises
     const prescribed = scheduledWorkout.prescribed_exercises || [];
     const tplFromSchedule = {
@@ -3072,8 +3165,20 @@ export default function GAIns() {
         is_compound: ex.is_compound,
       })),
     };
-    setShowPreCheckin(scheduledWorkout);
     setTpl(tplFromSchedule);
+
+    // Only show soreness check-in if there's a prior completed workout in this enrollment
+    const { count } = await supabase
+      .from('scheduled_workouts')
+      .select('id', { count: 'exact', head: true })
+      .eq('enrollment_id', scheduledWorkout.enrollment_id)
+      .eq('status', 'completed')
+      .lt('scheduled_date', scheduledWorkout.scheduled_date);
+    if (count > 0) {
+      setShowPreCheckin(scheduledWorkout);
+    } else {
+      nav("workout");
+    }
   };
 
   const handlePreCheckinSubmit = async (ratings) => {
@@ -3084,9 +3189,16 @@ export default function GAIns() {
     nav("workout");
   };
 
-  const handlePostFeedbackSubmit = async (pumpRating) => {
+  const handlePostFeedbackSubmit = async ({ pump, difficulty }) => {
     if (showPostFeedback) {
-      try { await savePumpRating(showPostFeedback.scheduledWorkoutId, showPostFeedback.workoutId, pumpRating); } catch (e) { console.error("Error saving pump:", e); }
+      const { scheduledWorkoutId, workoutId } = showPostFeedback;
+      if (pump > 0) {
+        try { await savePumpRating(scheduledWorkoutId, workoutId, pump); } catch (e) { console.error("Error saving pump:", e); }
+      }
+      if (difficulty > 0) {
+        try { await saveDifficultyRating(scheduledWorkoutId, workoutId, difficulty); } catch (e) { console.error("Error saving difficulty:", e); }
+        try { await applyDifficultyToFutureWorkouts(scheduledWorkoutId, difficulty); } catch (e) { console.error("Error applying difficulty adjustments:", e); }
+      }
     }
     setShowPostFeedback(null);
     nav("home");
@@ -3163,7 +3275,7 @@ export default function GAIns() {
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
         {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} />}
-        {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen programs={appPrograms} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
+        {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} />}
@@ -3236,6 +3348,8 @@ export default function GAIns() {
           profile={profile}
           user={user}
           plan={plan}
+          activeTheme={activeTheme}
+          onThemeChange={handleThemeChange}
           onClose={() => setProfileModalOpen(false)}
           onNotifications={() => {
             setProfileModalOpen(false);
