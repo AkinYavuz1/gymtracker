@@ -226,6 +226,19 @@ export async function getWeeklyStats() {
   return data;
 }
 
+export async function logPRShare(pr) {
+  const session = await getSession();
+  if (!session?.user) return;
+  await supabase.from('pr_shares').insert({
+    user_id: session.user.id,
+    exercise_name: pr.exercise,
+    pr_type: pr.type,
+    weight_kg: pr.weight,
+    reps: pr.reps,
+    estimated_1rm: pr.type === '1rm' ? pr.e1rm : null,
+  });
+}
+
 export async function getVolumeTrend() {
   const session = await getSession();
   if (!session?.user) return null;

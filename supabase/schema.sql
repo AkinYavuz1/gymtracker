@@ -899,6 +899,27 @@ CREATE POLICY "Users insert own program day exercises"
       JOIN programs p ON p.id = pd.program_id
       WHERE p.user_id = auth.uid()));
 
+-- ─── PR SHARES ───────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.pr_shares (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    exercise_name   TEXT NOT NULL,
+    pr_type         TEXT NOT NULL CHECK (pr_type IN ('1rm', 'volume')),
+    weight_kg       DECIMAL(6,2),
+    reps            INTEGER,
+    estimated_1rm   DECIMAL(6,2),
+    shared_at       TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.pr_shares ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users insert own pr_shares" ON public.pr_shares;
+CREATE POLICY "Users insert own pr_shares"
+  ON public.pr_shares FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Users read own pr_shares" ON public.pr_shares;
+CREATE POLICY "Users read own pr_shares"
+  ON public.pr_shares FOR SELECT TO authenticated USING (auth.uid() = user_id);
+
 -- ─── VOLUME STANDARDS (MEV/MAV/MRV reference table) ──────────
 -- Stores science-based per-session set ranges per muscle group per training frequency.
 -- Named internally with MEV/MAV/MRV; UI shows plain-language equivalents only.

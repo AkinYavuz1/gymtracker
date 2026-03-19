@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteWorkout, getVolumeStandards } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteWorkout, getVolumeStandards, logPRShare } from "./lib/supabase";
 import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup, getVolumeZoneLabel, getVolumeZoneColor } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
@@ -4004,6 +4004,23 @@ export default function GAIns() {
               const isBig3 = BIG_3.includes(pr.exercise);
               const compWeight = pr.type === "1rm" ? pr.e1rm : pr.weight;
               const animal = isBig3 ? getAnimalComparison(compWeight) : null;
+              const shareText = pr.type === "1rm"
+                ? `🏆 New PR! ${pr.exercise} — ${pr.weight}kg × ${pr.reps} rep${pr.reps !== 1 ? "s" : ""} (est. 1RM: ${Math.round(pr.e1rm)}kg)${animal ? ` That's like lifting a ${animal.name}!` : ""} #gAIns #PersonalRecord`
+                : `🏆 New PR! ${pr.exercise} — ${pr.weight}kg × ${pr.reps} rep${pr.reps !== 1 ? "s" : ""} (vol: ${pr.volume}kg) #gAIns #PersonalRecord`;
+              const handleShare = async () => {
+                if (navigator.share) {
+                  try {
+                    await navigator.share({ title: "New Personal Record!", text: shareText });
+                    await logPRShare(pr);
+                  } catch (e) {
+                    if (e.name !== "AbortError") console.error("Share failed:", e);
+                  }
+                } else {
+                  await navigator.clipboard.writeText(shareText);
+                  await logPRShare(pr);
+                  alert("Copied to clipboard!");
+                }
+              };
               return (
                 <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 16, marginBottom: 12, border: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -4015,16 +4032,23 @@ export default function GAIns() {
                       color: pr.type === "1rm" ? "#FFD700" : "#3DDDC4",
                     }}>{pr.type === "1rm" ? "1RM" : "VOLUME"}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: C.dim, fontFamily: C.mono, marginBottom: animal ? 12 : 0 }}>
+                  <div style={{ fontSize: 13, color: C.dim, fontFamily: C.mono, marginBottom: animal ? 8 : 12 }}>
                     {pr.weight}kg × {pr.reps} rep{pr.reps !== 1 ? "s" : ""}
                     {pr.type === "1rm" && <span> (e1RM: {Math.round(pr.e1rm)}kg)</span>}
                     {pr.type === "volume" && <span> (vol: {pr.volume}kg)</span>}
                   </div>
                   {animal && (
-                    <div style={{ fontSize: 13, color: C.accent, fontWeight: 600, fontFamily: C.font }}>
+                    <div style={{ fontSize: 13, color: C.accent, fontWeight: 600, fontFamily: C.font, marginBottom: 12 }}>
                       That's like lifting a {animal.name}!
                     </div>
                   )}
+                  <button onClick={handleShare} style={{
+                    width: "100%", padding: "10px", borderRadius: 10, border: `1px solid ${C.border}`,
+                    background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 13, fontWeight: 600,
+                    fontFamily: C.font, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  }}>
+                    <span style={{ fontSize: 16 }}>↗</span> Share
+                  </button>
                 </div>
               );
             })}
