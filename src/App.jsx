@@ -511,25 +511,24 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
               ? Math.round(Number(data.benchmarks[b.key]) * 0.453592 * 10) / 10
               : Number(data.benchmarks[b.key]);
 
-            // Check if PR already exists for this exercise
+            // Check if an active PR already exists for this exercise
             const { data: existing } = await supabase
               .from("personal_records")
-              .select("id, weight_kg")
+              .select("id, estimated_1rm")
               .eq("user_id", userId)
               .eq("exercise_name", b.name)
               .eq("pr_type", "1rm")
+              .eq("is_active", true)
               .limit(1);
 
-            if (existing?.length) {
-              // Only update if new value is higher
-              if (wKg > existing[0].weight_kg) {
-                await supabase.from("personal_records").update({
-                  weight_kg: wKg, reps: 1, achieved_at: new Date().toISOString()
-                }).eq("id", existing[0].id);
+            const prevE1rm = existing?.[0]?.estimated_1rm ?? 0;
+            // Only create a new PR if the benchmark beats the current best
+            if (wKg > prevE1rm) {
+              if (existing?.length) {
+                await supabase.from("personal_records").update({ is_active: false }).eq("id", existing[0].id);
               }
-            } else {
               await supabase.from("personal_records").insert({
-                user_id: userId, exercise_name: b.name, weight_kg: wKg, reps: 1, pr_type: "1rm",
+                user_id: userId, exercise_name: b.name, weight_kg: wKg, reps: 1, pr_type: "1rm", is_active: true,
               });
             }
           }
@@ -2303,15 +2302,25 @@ function PRScreen({ onBack, prs = [] }) {
 
   const filtered = prs
     .filter(p => (p.pr_type || "1rm") === tab)
+    .filter(p => p.weight_kg > 0)
     .sort((a, b) => new Date(b.achieved_at) - new Date(a.achieved_at));
 
   // Build sections: Big 3 pinned first, then grouped by muscle
   const big3PRs = BIG3.map(name => filtered.find(p => p.exercise_name === name)).filter(Boolean);
   const restPRs = filtered.filter(p => !BIG3.includes(p.exercise_name));
 
+  const MUSCLE_TO_GROUP = {
+    Chest: "Chest",
+    Back: "Back",
+    Quads: "Legs", Hamstrings: "Legs", Glutes: "Legs", Calves: "Legs",
+    Shoulders: "Shoulders",
+    Biceps: "Arms", Triceps: "Arms",
+    Abs: "Other",
+  };
   const grouped = {};
   restPRs.forEach(p => {
-    const g = getMuscleGroup(p.exercise_name);
+    const muscle = getMuscleGroup(p.exercise_name);
+    const g = MUSCLE_TO_GROUP[muscle] || "Other";
     if (!grouped[g]) grouped[g] = [];
     grouped[g].push(p);
   });
@@ -2380,7 +2389,7 @@ function PRScreen({ onBack, prs = [] }) {
       {big3PRs.length > 0 && (
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 11, color: C.accent, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>The Big 3</div>
-          {big3PRs.map(p => <PRCard key={p.exercise_name} p={p} i={cardIdx++} accentColor={C.accent} />)}
+          {big3PRs.map(p => <PRCard key={p.id} p={p} i={cardIdx++} accentColor={C.accent} />)}
         </div>
       )}
 
@@ -2391,7 +2400,7 @@ function PRScreen({ onBack, prs = [] }) {
             <div style={{ width: 8, height: 8, borderRadius: 4, background: GROUP_COLORS[group] }} />
             <div style={{ fontSize: 11, color: GROUP_COLORS[group], fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>{group}</div>
           </div>
-          {gPRs.map(p => <PRCard key={p.exercise_name} p={p} i={cardIdx++} accentColor={GROUP_COLORS[group]} />)}
+          {gPRs.map(p => <PRCard key={p.id} p={p} i={cardIdx++} accentColor={GROUP_COLORS[group]} />)}
         </div>
       ))}
     </div>

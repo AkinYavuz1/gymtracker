@@ -189,6 +189,20 @@ export async function deleteWorkout(workoutId, startedAt) {
       .lte('scheduled_date', weekEnd);
   }
 
+  // Deactivate PRs achieved in this workout (preserve history, just hide from active view)
+  const { data: affectedPRs } = await supabase
+    .from('personal_records')
+    .select('id, exercise_name, pr_type')
+    .eq('workout_id', workoutId)
+    .eq('is_active', true);
+
+  if (affectedPRs?.length) {
+    await supabase
+      .from('personal_records')
+      .update({ is_active: false })
+      .eq('workout_id', workoutId);
+  }
+
   const { error } = await supabase
     .from('workouts')
     .delete()
@@ -208,9 +222,13 @@ export async function getWorkoutSets(workoutIds) {
 }
 
 export async function getPersonalRecords() {
+  const session = await getSession();
+  const userId = session?.user?.id;
+  if (!userId) return [];
   const { data, error } = await supabase
     .from('personal_records')
     .select('*')
+    .eq('user_id', userId)
     .eq('is_active', true)
     .order('estimated_1rm', { ascending: false });
   if (error) console.error('getPersonalRecords error:', error);
@@ -375,6 +393,7 @@ export async function getPrograms() {
     .from('programs')
     .select('*, program_days(*, program_day_exercises(*))')
     .eq('is_active', true)
+    .is('user_id', null)
     .order('days_per_week');
   if (error) console.error('getPrograms error:', error);
   return data || [];
