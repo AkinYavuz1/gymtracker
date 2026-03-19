@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteWorkout, getVolumeStandards, logPRShare } from "./lib/supabase";
+import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare } from "./lib/supabase";
 import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup, getVolumeZoneLabel, getVolumeZoneColor } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
@@ -3771,7 +3771,7 @@ function VolumeDashboardScreen({ enrollment, volumeStandards, onBack }) {
 }
 
 /* ═══ PROGRAM SCREEN ═══ */
-function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight, scheduleRefreshKey, onCreateProgram }) {
+function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight, scheduleRefreshKey, onCreateProgram, onDeleteProgram }) {
   const [weekView, setWeekView] = useState(enrollment?.current_week || 1);
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -3800,25 +3800,28 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {programs.map(p => (
-            <button key={p.id} onClick={() => { if (onClearHighlight) onClearHighlight(); onStartOnboarding(p); }} style={{
-              width: "100%", padding: "18px 16px", borderRadius: 20,
-              border: p.id === highlightProgramId ? `2px solid ${p.color}` : `1px solid ${p.color}30`,
-              background: p.id === highlightProgramId ? `${p.color}18` : `${p.color}08`,
-              boxShadow: p.id === highlightProgramId ? `0 0 16px ${p.color}40` : "none",
-              cursor: "pointer", textAlign: "left", transition: "all 0.2s"
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 28 }}>{I === ICONS.minimal ? ({"💪":I.strength,"🔥":I.fire,"🦵":I.legsM,"⚡":I.upper,"🏋️":I.barbell,"🎯":I.target,"🏆":I.trophy}[p.icon] || I.program) : p.icon}</span>
-                  <div>
-                    <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.name}</div>
-                    <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{p.days_per_week} days/week · {p.duration_weeks} weeks</div>
-                    <div style={{ fontSize: 11, color: C.dim, marginTop: 4, lineHeight: 1.4 }}>{p.description}</div>
+            <div key={p.id} onClick={() => { if (onClearHighlight) onClearHighlight(); onStartOnboarding(p); }} style={{
+                width: "100%", padding: "18px 16px", borderRadius: 20, boxSizing: "border-box",
+                border: p.id === highlightProgramId ? `2px solid ${p.color}` : `1px solid ${p.color}30`,
+                background: p.id === highlightProgramId ? `${p.color}18` : `${p.color}08`,
+                boxShadow: p.id === highlightProgramId ? `0 0 16px ${p.color}40` : "none",
+                cursor: "pointer", textAlign: "left", transition: "all 0.2s"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 28 }}>{I === ICONS.minimal ? ({"💪":I.strength,"🔥":I.fire,"🦵":I.legsM,"⚡":I.upper,"🏋️":I.barbell,"🎯":I.target,"🏆":I.trophy}[p.icon] || I.program) : p.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.name}</div>
+                      <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{p.days_per_week} days/week · {p.duration_weeks} weeks</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 4, lineHeight: 1.4 }}>{p.description}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    {p.user_id && <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`Delete "${p.name}" permanently?`)) onDeleteProgram(p.id); }} style={{ width: 32, height: 32, borderRadius: 10, background: "rgba(255,60,60,0.12)", border: "1px solid rgba(255,60,60,0.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#ff6060", cursor: "pointer" }}>✕</button>}
+                    <div style={{ width: 36, height: 36, borderRadius: 12, background: `${p.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: p.color }}>→</div>
                   </div>
                 </div>
-                <div style={{ width: 36, height: 36, borderRadius: 12, background: `${p.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: p.color, flexShrink: 0 }}>→</div>
-              </div>
-            </button>
+            </div>
           ))}
         </div>
         <button onClick={onCreateProgram} style={{
@@ -4429,7 +4432,7 @@ export default function GAIns() {
           if (prs && prs.length > 0) { setCelebrationPRs(prs); }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
-        {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} />}
+        {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} onDeleteProgram={async (id) => { try { await deleteUserProgram(id); refreshAppData(); } catch (e) { console.error(e); } }} />}
         {screen === "program" && !programOnboardingProgram && showProgramBuilder && <ProgramBuilderScreen onBack={() => setShowProgramBuilder(false)} onCreated={(newProgram) => { setShowProgramBuilder(false); setHighlightProgramId(newProgram.id); refreshAppData(); }} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}

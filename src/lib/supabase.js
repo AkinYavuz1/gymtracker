@@ -389,12 +389,22 @@ export async function seedDummyData() {
 // ─── Program helpers ────────────────────────────────────────
 
 export async function getPrograms() {
-  const { data, error } = await supabase
+  const session = await getSession();
+  const userId = session?.user?.id;
+
+  let query = supabase
     .from('programs')
     .select('*, program_days(*, program_day_exercises(*))')
     .eq('is_active', true)
-    .is('user_id', null)
     .order('days_per_week');
+
+  if (userId) {
+    query = query.or(`user_id.is.null,user_id.eq.${userId}`);
+  } else {
+    query = query.is('user_id', null);
+  }
+
+  const { data, error } = await query;
   if (error) console.error('getPrograms error:', error);
   return data || [];
 }
@@ -819,6 +829,17 @@ export async function createUserProgram(programData) {
   }
 
   return program;
+}
+
+export async function deleteUserProgram(programId) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('programs')
+    .delete()
+    .eq('id', programId)
+    .eq('user_id', session.user.id);
+  if (error) throw error;
 }
 
 /**

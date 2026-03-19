@@ -885,6 +885,9 @@ CREATE POLICY "Users insert own programs"
 DROP POLICY IF EXISTS "Authenticated users read programs" ON public.programs;
 CREATE POLICY "Authenticated users read programs"
   ON public.programs FOR SELECT TO authenticated USING (user_id IS NULL OR user_id = auth.uid());
+DROP POLICY IF EXISTS "Users delete own programs" ON public.programs;
+CREATE POLICY "Users delete own programs"
+  ON public.programs FOR DELETE TO authenticated USING (auth.uid() = user_id);
 
 -- RLS: users can insert days/exercises for their own programs
 DROP POLICY IF EXISTS "Users insert own program days" ON public.program_days;
