@@ -1071,7 +1071,7 @@ function TemplatePicker({ onSelect, onBack }) {
           <button key={t.id} onClick={() => onSelect(t)} style={{ width: "100%", padding: "14px 16px", borderRadius: 20, border: `1px solid ${t.color}30`, background: `${t.color}08`, cursor: "pointer", textAlign: "left" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
-                <div style={{ fontSize: 22, marginBottom: 4 }}>{t.icon}</div>
+                <div style={{ fontSize: 22, marginBottom: 4 }}>{I[t.id] || t.icon}</div>
                 <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{t.label || t.name}</div>
                 <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{t.exercises.length} exercises</div>
               </div>
@@ -3315,7 +3315,9 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
   const [error, setError] = useState(null);
 
   const COLORS = ["#A47BFF", "#DFFF3C", "#3CFFF0", "#FF6B3C", "#FF9F3C"];
-  const ICONS = ["💪", "🔥", "🦵", "⚡", "🏋️", "🎯"];
+  const PROGRAM_ICONS = I === ICONS.minimal
+    ? [I.strength, I.fire, I.legsM, I.upper, I.barbell, I.target]
+    : ["💪", "🔥", "🦵", "⚡", "🏋️", "🎯"];
   const GOALS = ["hypertrophy", "strength", "endurance", "general"];
   const DURATIONS = [30, 45, 60, 90];
   const CATEGORIES = Object.keys(EX_LIB);
@@ -3473,7 +3475,7 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
           <div>
             <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Icon</div>
             <div style={{ display: "flex", gap: 8 }}>
-              {ICONS.map(ic => (
+              {PROGRAM_ICONS.map(ic => (
                 <button key={ic} onClick={() => setProgramIcon(ic)} style={{
                   width: 44, height: 44, borderRadius: 12, fontSize: 22, background: programIcon === ic ? `${programColor}30` : C.card,
                   border: `1px solid ${programIcon === ic ? programColor : C.border}`, cursor: "pointer",
@@ -3792,7 +3794,7 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <span style={{ fontSize: 28 }}>{p.icon}</span>
+                  <span style={{ fontSize: 28 }}>{I === ICONS.minimal ? ({"💪":I.strength,"🔥":I.fire,"🦵":I.legsM,"⚡":I.upper,"🏋️":I.barbell,"🎯":I.target,"🏆":I.trophy}[p.icon] || I.program) : p.icon}</span>
                   <div>
                     <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{p.name}</div>
                     <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{p.days_per_week} days/week · {p.duration_weeks} weeks</div>
