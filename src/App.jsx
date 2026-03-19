@@ -1337,59 +1337,293 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
 }
 
 /* ═══ STATS ═══ */
-function StatsScreen({ workouts = [], prs = [], volumeTrend = [] }) {
+function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile }) {
   const [m, setM] = useState(false);
+  const [sets, setSets] = useState([]);
+  const [loadingSets, setLoadingSets] = useState(true);
+  const [period, setPeriod] = useState("4W");
+  const [strengthSheet, setStrengthSheet] = useState(false);
+  const [selectedLift, setSelectedLift] = useState("Bench Press");
+  const [expandedPlateaus, setExpandedPlateaus] = useState(false);
 
-  useEffect(() => { setM(true); }, []);
+  useEffect(() => {
+    setM(true);
+    const ids = workouts.map(w => w.id).filter(Boolean);
+    getWorkoutSets(ids).then(data => { setSets(data); setLoadingSets(false); });
+  }, [workouts]);
 
-  // Calculate muscle split from workouts
-  const muscleCounts = { "Chest": 0, "Back": 0, "Legs": 0, "Shoulders": 0, "Arms": 0 };
-  const muscleColors = { "Chest": "#DFFF3C", "Back": "#3CFFF0", "Legs": "#FF6B3C", "Shoulders": "#B47CFF", "Arms": "#47B8FF" };
+  // Time filter
+  const periodCutoff = { "4W": 28, "3M": 90, "All": 99999 }[period];
+  const cutoffDate = new Date(Date.now() - periodCutoff * 86400000);
+  const filteredWorkouts = workouts.filter(w => new Date(w.started_at) >= cutoffDate);
+  const filteredWorkoutIds = new Set(filteredWorkouts.map(w => w.id));
+  const filteredSets = sets.filter(s => filteredWorkoutIds.has(s.workout_id));
 
-  const totalVolume = workouts.reduce((sum, w) => sum + (w.total_volume_kg || 0), 0);
-  const avgDuration = workouts.length > 0 ? workouts.reduce((sum, w) => sum + (w.duration_secs || 0), 0) / workouts.length / 60 : 0;
-  const ms = Object.entries(muscleCounts).map(([name, count]) => ({ name, s: count, color: muscleColors[name] }));
-  const mx = Math.max(...ms.map(m => m.s), 1);
+  // Epley helper
+  const e1rm = (w, r) => (r === 1 ? w : w * (1 + r / 30));
 
-  const stats = [
-    { l: "Workouts", v: workouts.length.toString(), c: "#DFFF3C" },
-    { l: "Volume", v: Math.round(totalVolume).toLocaleString(), c: "#3CFFF0" },
-    { l: "Avg Time", v: Math.round(avgDuration) + "m", c: "#FF6B3C" },
-    { l: "PRs", v: prs.length.toString(), c: "#B47CFF" }
-  ];
+  // Insight A — Strength per lift
+  const KEY_LIFTS = ["Bench Press", "Back Squat", "Deadlift"];
+  const strengthData = KEY_LIFTS.map(lift => {
+    const liftSets = filteredSets.filter(s => s.exercise_name === lift);
+    const sessionMap = {};
+    liftSets.forEach(s => {
+      const val = e1rm(s.weight_kg, s.reps);
+      sessionMap[s.workout_id] = Math.max(sessionMap[s.workout_id] || 0, val);
+    });
+    const sessions = Object.entries(sessionMap).map(([wid, val]) => {
+      const wo = filteredWorkouts.find(w => w.id === wid);
+      return { date: wo?.started_at || "", val };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    const current = sessions.at(-1)?.val || 0;
+    const oldest = sessions[0]?.val || 0;
+    const delta = oldest > 0 && sessions.length > 1 ? ((current - oldest) / oldest) * 100 : null;
+    const chartData = sessions.map((s, i) => ({ w: `W${i + 1}`, v: Math.round(s.val) }));
+    return { lift, current: Math.round(current), delta, chartData };
+  });
+
+  // Insight B — Consistency (always last 28 days)
+  const trainedDays = new Set(workouts.map(w => w.started_at?.slice(0, 10)));
+  const dotGrid = Array.from({ length: 28 }, (_, i) => {
+    const d = new Date(Date.now() - (27 - i) * 86400000);
+    return trainedDays.has(d.toISOString().slice(0, 10));
+  });
+  let streak = 0;
+  for (let i = dotGrid.length - 1; i >= 0; i--) {
+    if (dotGrid[i]) streak++; else if (streak > 0) break;
+  }
+  const trainedIn28 = dotGrid.filter(Boolean).length;
+  const target = (profile?.training_frequency || 3) * 4;
+  const completionRate = Math.min(100, Math.round(trainedIn28 / target * 100));
+
+  // Insight C — Volume delta
+  const weekStart = d => { const s = new Date(d); s.setDate(s.getDate() - s.getDay()); return s.toDateString(); };
+  const thisWeek = weekStart(new Date());
+  const lastWeek = weekStart(new Date(Date.now() - 7 * 86400000));
+  const thisWeekVol = workouts.filter(w => weekStart(w.started_at) === thisWeek).reduce((s, w) => s + (w.total_volume_kg || 0), 0);
+  const lastWeekVol = workouts.filter(w => weekStart(w.started_at) === lastWeek).reduce((s, w) => s + (w.total_volume_kg || 0), 0);
+  const volumeDelta = lastWeekVol > 0 ? Math.round((thisWeekVol - lastWeekVol) / lastWeekVol * 100) : null;
+
+  // Insight D — Muscle split (fix)
+  const muscleColors = { Chest: "#DFFF3C", Back: "#3CFFF0", Legs: "#FF6B3C", Shoulders: "#B47CFF", Arms: "#47B8FF" };
+  const muscleCounts = {};
+  filteredSets.forEach(s => {
+    const g = MUSCLE_MAP[s.exercise_name];
+    if (g && muscleColors[g]) muscleCounts[g] = (muscleCounts[g] || 0) + 1;
+  });
+  const muscleEntries = Object.entries(muscleColors).map(([name, color]) => ({ name, color, count: muscleCounts[name] || 0 }));
+  const maxMuscle = Math.max(...muscleEntries.map(e => e.count), 1);
+
+  // Insight E — Plateau detection
+  const plateaus = [];
+  const exerciseNames = [...new Set(filteredSets.map(s => s.exercise_name))];
+  exerciseNames.forEach(name => {
+    const exSets = filteredSets.filter(s => s.exercise_name === name);
+    const byWorkout = {};
+    exSets.forEach(s => { byWorkout[s.workout_id] = Math.max(byWorkout[s.workout_id] || 0, e1rm(s.weight_kg, s.reps)); });
+    const sessions = Object.entries(byWorkout).map(([wid, val]) => {
+      const wo = filteredWorkouts.find(w => w.id === wid);
+      return { date: wo?.started_at || "", val };
+    }).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+    if (sessions.length >= 3) {
+      const [s1, , s3] = sessions;
+      if (s1.val <= s3.val * 1.01) {
+        const daysSince = Math.round((Date.now() - new Date(s3.date)) / 86400000);
+        plateaus.push({ exercise: name, daysSince, current: Math.round(s1.val) });
+      }
+    }
+  });
+
+  const cardStyle = { background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 16 };
+  const labelStyle = { fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 12 };
 
   return (
     <div style={{ padding: "0 20px 110px", opacity: m ? 1 : 0, transition: "opacity .4s" }}>
-      <div style={{ padding: "14px 0 18px" }}>
+      {/* Header */}
+      <div style={{ padding: "14px 0 16px" }}>
         <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Analytics</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Progress</div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
-        {stats.map((s, i) => (
-          <div key={i} style={{ background: C.card, borderRadius: 16, padding: "16px", border: `1px solid ${C.border}` }}>
-            <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>{s.l}</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: s.c, fontFamily: C.font, lineHeight: 1 }}>{s.v}</div>
-          </div>
+
+      {/* Time filter */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {["4W", "3M", "All"].map(p => (
+          <Pill key={p} active={period === p} color={C.accent} onClick={() => setPeriod(p)}>{p}</Pill>
         ))}
       </div>
-      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}`, marginBottom: 22 }}>
-        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>8-Week Volume</div>
-        <MiniChart data={volumeTrend.length > 0 ? volumeTrend : [{ w: "W1", v: 0 }]} h={70} />
-      </div>
-      <div style={{ background: C.card, borderRadius: 18, padding: "18px", border: `1px solid ${C.border}` }}>
-        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 14 }}>Muscle Split</div>
-        {ms.map((mg, i) => (
-          <div key={i} style={{ marginBottom: 12 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{mg.name}</span>
-              <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>{mg.s}</span>
+
+      {/* Empty state */}
+      {workouts.length === 0 ? (
+        <div style={{ textAlign: "center", paddingTop: 80 }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>📊</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>No data yet</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 8 }}>Complete your first workout to see insights</div>
+        </div>
+      ) : (
+        <>
+          {/* A. Strength Hero */}
+          <div style={{ ...cardStyle, border: `1px solid ${C.accent}28` }}>
+            <div style={labelStyle}>Strength Trends</div>
+            {loadingSets ? (
+              <div style={{ color: C.dim, fontSize: 13, textAlign: "center", padding: "12px 0" }}>Loading...</div>
+            ) : (
+              <>
+                {KEY_LIFTS.map((lift, i) => {
+                  const d = strengthData[i];
+                  return (
+                    <div key={lift} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600, color: "#fff", minWidth: 100 }}>{lift}</span>
+                      {d.current > 0 ? (
+                        <>
+                          <span style={{ fontSize: 16, fontWeight: 800, color: C.accent, fontFamily: C.mono }}>{d.current}kg</span>
+                          {d.delta !== null ? (
+                            <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 8px", borderRadius: 8, background: d.delta >= 0 ? "rgba(74,222,128,0.15)" : "rgba(248,113,113,0.15)", color: d.delta >= 0 ? "#4ADE80" : "#F87171" }}>
+                              {d.delta >= 0 ? "+" : ""}{Math.round(d.delta)}%
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 12, color: C.dim }}>─</span>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 12, color: C.dim }}>No data yet</span>
+                      )}
+                    </div>
+                  );
+                })}
+                <button onClick={() => setStrengthSheet(true)} style={{ marginTop: 4, width: "100%", padding: "10px", borderRadius: 12, border: `1px solid ${C.accent}40`, background: `${C.accent}10`, color: C.accent, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>
+                  View trends →
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* B. Consistency */}
+          <div style={cardStyle}>
+            <div style={labelStyle}>Consistency</div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{streak}</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>day streak</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: C.accent, lineHeight: 1 }}>{completionRate}%</div>
+                <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>4-week rate</div>
+              </div>
             </div>
-            <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 3, background: mg.color, width: m ? `${(mg.s / mx) * 100}%` : "0%", transition: `width .7s cubic-bezier(.22,1,.36,1) ${.15 + i * .08}s` }} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 5 }}>
+              {dotGrid.map((hit, i) => (
+                <div key={i} style={{ width: "100%", aspectRatio: "1", borderRadius: "50%", background: hit ? C.accent : C.border }} />
+              ))}
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* C. Volume Trend */}
+          <div style={cardStyle}>
+            <div style={labelStyle}>Volume Trend</div>
+            <MiniChart data={volumeTrend.length > 0 ? volumeTrend : (thisWeekVol > 0 ? [{ w: "W1", v: Math.round(thisWeekVol) }] : [{ w: "W1", v: 0 }])} h={70} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
+              <span style={{ fontSize: 13, color: C.dim }}>
+                This week: {Math.round(thisWeekVol).toLocaleString()}kg
+                {volumeDelta !== null && (
+                  <span style={{ color: volumeDelta >= 0 ? "#4ADE80" : "#F87171", marginLeft: 6 }}>
+                    {volumeDelta >= 0 ? "+" : ""}{volumeDelta}% vs last
+                  </span>
+                )}
+              </span>
+              {onNav && (
+                <button onClick={() => onNav("weekDetail")} style={{ fontSize: 13, color: C.accent, background: "none", border: "none", cursor: "pointer", fontFamily: C.font, padding: 0 }}>
+                  See week →
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* D. Muscle Split */}
+          <div style={cardStyle}>
+            <div style={labelStyle}>Muscle Split</div>
+            {loadingSets ? (
+              <div style={{ color: C.dim, fontSize: 13, textAlign: "center", padding: "12px 0" }}>Computing...</div>
+            ) : (
+              <>
+                {muscleEntries.every(e => e.count === 0) && (
+                  <div style={{ fontSize: 12, color: C.dim, marginBottom: 10 }}>No sets logged yet</div>
+                )}
+                {muscleEntries.map((mg, i) => (
+                  <div key={i} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "#fff" }}>{mg.name}</span>
+                      <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>{mg.count} sets</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 3, background: mg.color, width: m ? `${(mg.count / maxMuscle) * 100}%` : "0%", transition: `width .7s cubic-bezier(.22,1,.36,1) ${.15 + i * .08}s` }} />
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+
+          {/* E. Plateau Alerts */}
+          {!loadingSets && plateaus.length > 0 && (
+            <div style={{ ...cardStyle, border: "1px solid rgba(255,180,50,0.2)" }}>
+              <div style={{ ...labelStyle, color: "#FFB432" }}>Plateau Alerts</div>
+              {(expandedPlateaus ? plateaus : plateaus.slice(0, 1)).map((p, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>⚠ {p.exercise}</div>
+                    <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>No improvement in {p.daysSince} days · e1RM: {p.current}kg</div>
+                  </div>
+                </div>
+              ))}
+              {plateaus.length > 1 && (
+                <button onClick={() => setExpandedPlateaus(e => !e)} style={{ marginTop: 4, padding: "8px 14px", borderRadius: 10, border: `1px solid rgba(255,180,50,0.3)`, background: "rgba(255,180,50,0.08)", color: "#FFB432", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>
+                  {expandedPlateaus ? "Collapse" : `Show all ${plateaus.length}`}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Strength Drill Sheet */}
+      {strengthSheet && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(20px)", zIndex: 210, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={() => setStrengthSheet(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "24px 20px 48px", maxHeight: "75vh", overflowY: "auto" }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto 18px" }} />
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 18, textAlign: "center" }}>Strength Trends</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 20, justifyContent: "center" }}>
+              {KEY_LIFTS.map(lift => (
+                <Pill key={lift} active={selectedLift === lift} color={C.accent} onClick={() => setSelectedLift(lift)}>{lift.split(" ")[0]}</Pill>
+              ))}
+            </div>
+            {(() => {
+              const d = strengthData.find(s => s.lift === selectedLift);
+              return d ? (
+                <>
+                  {d.chartData.length >= 2 ? (
+                    <MiniChart data={d.chartData} h={100} color={C.accent} />
+                  ) : (
+                    <div style={{ textAlign: "center", padding: "30px 0", color: C.dim }}>
+                      <div style={{ fontSize: 24, marginBottom: 8 }}>○</div>
+                      <div style={{ fontSize: 13 }}>Not enough data</div>
+                      <div style={{ fontSize: 11, marginTop: 4 }}>Train {selectedLift} again to see your trend</div>
+                    </div>
+                  )}
+                  <div style={{ textAlign: "center", marginTop: 16 }}>
+                    <div style={{ fontSize: 32, fontWeight: 800, color: C.accent, fontFamily: C.mono }}>{d.current > 0 ? `${d.current}kg` : "—"}</div>
+                    <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>Estimated 1RM</div>
+                    {d.delta !== null && (
+                      <div style={{ fontSize: 14, fontWeight: 700, color: d.delta >= 0 ? "#4ADE80" : "#F87171", marginTop: 8 }}>
+                        {d.delta >= 0 ? "+" : ""}{Math.round(d.delta)}% over period
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null;
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3735,7 +3969,7 @@ export default function GAIns() {
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} />}
-        {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} />}
+        {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onNav={nav} profile={profile} />}
         {screen === "volumeDashboard" && <VolumeDashboardScreen enrollment={activeEnrollment} volumeStandards={volumeStandards} onBack={() => nav("program")} />}
         {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
         {screen === "dayDetail" && dayDetailDate && <DayDetailScreen date={dayDetailDate} workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
