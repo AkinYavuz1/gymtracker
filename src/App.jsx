@@ -1192,6 +1192,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                 .limit(1);
 
               const prevE1rm = existing?.[0]?.estimated_1rm ?? 0;
+              const isFirstLog1rm = !existing?.length;
               if (best1rm.e1rm > prevE1rm) {
                 // Deactivate old PR row, insert new one
                 if (existing?.length) {
@@ -1202,7 +1203,9 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                   weight_kg: best1rm.s.weight_kg, reps: best1rm.s.reps,
                   pr_type: "1rm", workout_id: workout.id, is_active: true
                 });
-                newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
+                if (!isFirstLog1rm) {
+                  newPRs.push({ exercise: exerciseName, type: "1rm", weight: best1rm.s.weight_kg, reps: best1rm.s.reps, e1rm: best1rm.e1rm });
+                }
               }
             }
 
@@ -1218,6 +1221,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                 .limit(1);
 
               const prevVol = existing?.[0]?.set_volume ?? 0;
+              const isFirstLogVol = !existing?.length;
               if (bestVol.vol > prevVol) {
                 // Deactivate old PR row, insert new one
                 if (existing?.length) {
@@ -1228,7 +1232,9 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                   weight_kg: bestVol.s.weight_kg, reps: bestVol.s.reps,
                   pr_type: "volume", workout_id: workout.id, is_active: true
                 });
-                newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
+                if (!isFirstLogVol) {
+                  newPRs.push({ exercise: exerciseName, type: "volume", weight: bestVol.s.weight_kg, reps: bestVol.s.reps, volume: bestVol.vol });
+                }
               }
             }
           }
@@ -3994,9 +4000,10 @@ export default function GAIns() {
               <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Congratulations on crushing it!</div>
             </div>
             {celebrationPRs.map((pr, i) => {
+              const BIG_3 = ["Bench Press", "Back Squat", "Deadlift"];
+              const isBig3 = BIG_3.includes(pr.exercise);
               const compWeight = pr.type === "1rm" ? pr.e1rm : pr.weight;
-              const animal = getAnimalComparison(compWeight);
-              const animalStyle = getAnimalStyle(animal.row, animal.col);
+              const animal = isBig3 ? getAnimalComparison(compWeight) : null;
               return (
                 <div key={i} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 16, padding: 16, marginBottom: 12, border: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -4008,17 +4015,16 @@ export default function GAIns() {
                       color: pr.type === "1rm" ? "#FFD700" : "#3DDDC4",
                     }}>{pr.type === "1rm" ? "1RM" : "VOLUME"}</span>
                   </div>
-                  <div style={{ fontSize: 13, color: C.dim, fontFamily: C.mono, marginBottom: 12 }}>
+                  <div style={{ fontSize: 13, color: C.dim, fontFamily: C.mono, marginBottom: animal ? 12 : 0 }}>
                     {pr.weight}kg × {pr.reps} rep{pr.reps !== 1 ? "s" : ""}
                     {pr.type === "1rm" && <span> (e1RM: {Math.round(pr.e1rm)}kg)</span>}
                     {pr.type === "volume" && <span> (vol: {pr.volume}kg)</span>}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <div style={{ ...animalStyle, borderRadius: 16, backgroundRepeat: "no-repeat" }} />
-                    <div style={{ fontSize: 13, color: C.accent, fontWeight: 600, fontFamily: C.font, marginTop: 8 }}>
+                  {animal && (
+                    <div style={{ fontSize: 13, color: C.accent, fontWeight: 600, fontFamily: C.font }}>
                       That's like lifting a {animal.name}!
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}
