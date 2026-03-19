@@ -55,6 +55,41 @@ const THEMES = {
   },
 };
 const C = { ...THEMES.aurora };
+const ICONS = {
+  emoji: {
+    home: "⌂", program: "📋", coach: "🧠", history: "☰", stats: "◈",
+    push: "💪", pull: "🔄", legs: "🦵", upper: "⚡",
+    fat_loss: "🔥", muscle_gain: "💪", maintenance: "⚖️", performance: "🏆",
+    beginner: "🌱", intermediate: "🔥", advanced: "🏆",
+    chest: "🫁", back: "🔙", legsM: "🦵", shoulders: "🤷", arms: "💪", core: "🎯",
+    warning: "⚠️", trendUp: "📈", trendDown: "📉", tip: "💡", trophy: "🏆",
+    target: "🎯", rocket: "🚀", wrench: "🔧", book: "🎓", food: "🥗", science: "🔬",
+    sleep: "😴", calendar: "📅", calendarAlt: "📅", calendarW: "📆",
+    brain: "🧠", fire: "🔥", chart: "📊",
+    barbell: "🏋️",
+    ratingScale: ["😊", "😐", "😣", "😖", "🤕"],
+    pumpScale: ["😐", "🙂", "😊", "😄", "💪", "🔥", "🔥", "💥", "🤯", "🏆"],
+    difficultyScale: ["😴", "🥱", "😌", "🙂", "😤", "💪", "🔥", "🥵", "💀", "☠️"],
+    strength: "💪", intensity: "🔥", star: "⭐", check: "✓",
+  },
+  minimal: {
+    home: "⌂", program: "≡", coach: "◉", history: "☰", stats: "◫",
+    push: "↑", pull: "↓", legs: "▽", upper: "◇",
+    fat_loss: "▲", muscle_gain: "↑", maintenance: "◎", performance: "★",
+    beginner: "·", intermediate: "▲", advanced: "★",
+    chest: "◻", back: "◼", legsM: "▽", shoulders: "△", arms: "↑", core: "◉",
+    warning: "!", trendUp: "↑", trendDown: "↓", tip: "›", trophy: "★",
+    target: "◎", rocket: "↑", wrench: "⊙", book: "≡", food: "◦", science: "◈",
+    sleep: "◌", calendar: "▫", calendarAlt: "▫", calendarW: "▫",
+    brain: "◉", fire: "▲", chart: "≡",
+    barbell: "↑",
+    ratingScale: ["○○○○○", "●○○○○", "●●○○○", "●●●○○", "●●●●●"],
+    pumpScale:   ["○", "○○", "○○○", "○○○○", "●", "●●", "●●●", "●●●●", "●●●●●", "★"],
+    difficultyScale: ["○", "○○", "▲", "▲▲", "●", "●●", "●●●", "▲▲▲", "■", "★"],
+    strength: "↑", intensity: "▲", star: "★", check: "✓",
+  },
+};
+let I = ICONS.emoji; // updated at render time from GAIns
 
 /* ═══ COMPONENTS ═══ */
 function MiniChart({ data, color = C.accent, h = 48 }) {
@@ -356,10 +391,10 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
 
 /* ═══ ONBOARDING ═══ */
 const GOALS = [
-  { id: "fat_loss",    label: "Fat Loss",       icon: "🔥", desc: "Lose body fat" },
-  { id: "muscle_gain", label: "Muscle Gain",    icon: "💪", desc: "Build size and strength" },
-  { id: "maintenance", label: "Maintenance",    icon: "⚖️", desc: "Maintain current physique" },
-  { id: "performance", label: "Performance",    icon: "🏆", desc: "Athletic performance" },
+  { id: "fat_loss",    label: "Fat Loss",       desc: "Lose body fat" },
+  { id: "muscle_gain", label: "Muscle Gain",    desc: "Build size and strength" },
+  { id: "maintenance", label: "Maintenance",    desc: "Maintain current physique" },
+  { id: "performance", label: "Performance",    desc: "Athletic performance" },
 ];
 const TARGET_RATES = [
   { id: "slow",       label: "Slow & Steady", desc: "Minimal muscle loss / lean gains" },
@@ -367,9 +402,9 @@ const TARGET_RATES = [
   { id: "aggressive", label: "Aggressive",    desc: "Faster results, harder effort" },
 ];
 const EXPERIENCE_LEVELS = [
-  { id: "beginner",     label: "Beginner",     icon: "🌱", desc: "Less than 1 year" },
-  { id: "intermediate", label: "Intermediate", icon: "🔥", desc: "1–3 years" },
-  { id: "advanced",     label: "Advanced",     icon: "🏆", desc: "3+ years" },
+  { id: "beginner",     label: "Beginner",     desc: "Less than 1 year" },
+  { id: "intermediate", label: "Intermediate", desc: "1–3 years" },
+  { id: "advanced",     label: "Advanced",     desc: "3+ years" },
 ];
 const FOCUS_MUSCLE_GROUPS = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
 
@@ -607,7 +642,7 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
               {GOALS.map(g => (
                 <button key={g.id} onClick={() => set("goal", g.id)} style={{ padding: "16px 12px", borderRadius: 14, border: `2px solid ${data.goal === g.id ? C.accent : C.border}`, background: data.goal === g.id ? `${C.accent}12` : C.card, cursor: "pointer", textAlign: "left", transition: "all 0.2s" }}>
-                  <div style={{ fontSize: 22, marginBottom: 6 }}>{g.icon}</div>
+                  <div style={{ fontSize: 22, marginBottom: 6 }}>{I[g.id]}</div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: data.goal === g.id ? C.accent : "#fff", fontFamily: C.font }}>{g.label}</div>
                   <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{g.desc}</div>
                 </button>
@@ -631,7 +666,7 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {EXPERIENCE_LEVELS.map(e => (
                 <button key={e.id} onClick={() => set("experience", e.id)} style={{ padding: "14px 16px", borderRadius: 12, border: `2px solid ${data.experience === e.id ? C.ai : C.border}`, background: data.experience === e.id ? `${C.ai}12` : C.card, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, transition: "all 0.2s" }}>
-                  <span style={{ fontSize: 20 }}>{e.icon}</span>
+                  <span style={{ fontSize: 20 }}>{I[e.id]}</span>
                   <div style={{ textAlign: "left" }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: data.experience === e.id ? C.ai : "#fff", fontFamily: C.font }}>{e.label}</div>
                     <div style={{ fontSize: 11, color: C.dim }}>{e.desc}</div>
@@ -665,10 +700,10 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
             <div style={{ fontSize: 13, color: C.dim, marginBottom: 24 }}>Helps set starting weights for your program. Skip if unsure.</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {[
-                { key: "squat", label: "Back Squat", icon: "🦵" },
-                { key: "bench", label: "Bench Press", icon: "🏋️" },
-                { key: "deadlift", label: "Deadlift", icon: "🔥" },
-                { key: "ohp", label: "Overhead Press", icon: "⬆️" },
+                { key: "squat", label: "Back Squat", icon: I.legsM },
+                { key: "bench", label: "Bench Press", icon: I.barbell },
+                { key: "deadlift", label: "Deadlift", icon: I.fire },
+                { key: "ohp", label: "Overhead Press", icon: I.strength },
               ].map(b => (
                 <div key={b.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 20, width: 28 }}>{b.icon}</span>
@@ -693,7 +728,7 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
             <div style={{ fontSize: 13, color: C.dim, marginBottom: 24 }}>Select body parts you want to prioritize. Optional.</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
               {FOCUS_MUSCLE_GROUPS.map(mg => {
-                const icons = { Chest: "🫁", Back: "🔙", Legs: "🦵", Shoulders: "🤷", Arms: "💪", Core: "🎯" };
+                const icons = { Chest: I.chest, Back: I.back, Legs: I.legsM, Shoulders: I.shoulders, Arms: I.arms, Core: I.core };
                 const selected = data.focusAreas.includes(mg);
                 return (
                   <button key={mg} onClick={() => toggleFocus(mg)} style={{
@@ -1897,7 +1932,7 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
     muscleSetCounts[group] = (muscleSetCounts[group] || 0) + 1;
   });
   Object.entries(muscleSetCounts).forEach(([group, count]) => {
-    if (count < 10 && group !== "Other") insights.push({ type: "warning", icon: "⚠️", title: `Low ${group} Volume`, body: `Only ${count} sets for ${group} this week — may be below growth threshold (10+ recommended).` });
+    if (count < 10 && group !== "Other") insights.push({ type: "warning", icon: I.warning, title: `Low ${group} Volume`, body: `Only ${count} sets for ${group} this week — may be below growth threshold (10+ recommended).` });
   });
 
   // RPE insights per exercise
@@ -1905,26 +1940,26 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
   sets.forEach(s => { if (s.rpe) { if (!exerciseRPEs[s.exercise_name]) exerciseRPEs[s.exercise_name] = []; exerciseRPEs[s.exercise_name].push(s.rpe); } });
   Object.entries(exerciseRPEs).forEach(([ex, rpes]) => {
     const avg = rpes.reduce((a, b) => a + b, 0) / rpes.length;
-    if (avg >= 9) insights.push({ type: "warning", icon: "🔥", title: `High RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — risk of accumulated fatigue. Consider backing off next session.` });
-    if (avg <= 5) insights.push({ type: "info", icon: "💡", title: `Low RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — you may have room to increase intensity.` });
+    if (avg >= 9) insights.push({ type: "warning", icon: I.fire, title: `High RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — risk of accumulated fatigue. Consider backing off next session.` });
+    if (avg <= 5) insights.push({ type: "info", icon: I.tip, title: `Low RPE on ${ex}`, body: `Avg RPE ${avg.toFixed(1)} — you may have room to increase intensity.` });
   });
 
   // Volume change vs last week
   if (prevVolume > 0) {
     const volChange = (totalVolume - prevVolume) / prevVolume * 100;
-    if (volChange > 20) insights.push({ type: "warning", icon: "📈", title: "Volume Spike", body: `Volume jumped ${Math.round(volChange)}% this week — monitor recovery and watch for overreach signs.` });
-    if (volChange < -20) insights.push({ type: "info", icon: "📉", title: "Volume Drop", body: `Volume dropped ${Math.abs(Math.round(volChange))}% — planned deload or missed sessions?` });
+    if (volChange > 20) insights.push({ type: "warning", icon: I.trendUp, title: "Volume Spike", body: `Volume jumped ${Math.round(volChange)}% this week — monitor recovery and watch for overreach signs.` });
+    if (volChange < -20) insights.push({ type: "info", icon: I.trendDown, title: "Volume Drop", body: `Volume dropped ${Math.abs(Math.round(volChange))}% — planned deload or missed sessions?` });
   }
 
   // Frequency change
   if (prevWeekWorkouts.length > 0 && weekWorkouts.length !== prevWeekWorkouts.length) {
     const diff = weekWorkouts.length - prevWeekWorkouts.length;
-    if (diff > 0) insights.push({ type: "positive", icon: "🎯", title: "Frequency Up", body: `You trained ${weekWorkouts.length} days this week vs ${prevWeekWorkouts.length} last week — nice increase!` });
+    if (diff > 0) insights.push({ type: "positive", icon: I.target, title: "Frequency Up", body: `You trained ${weekWorkouts.length} days this week vs ${prevWeekWorkouts.length} last week — nice increase!` });
   }
 
   // PRs achieved
   weekPRs.forEach(pr => {
-    insights.push({ type: "positive", icon: "🏆", title: `New PR: ${pr.exercise_name}`, body: `${pr.weight_kg}kg × ${pr.reps} (est. 1RM: ${Math.round(pr.estimated_1rm || pr.weight_kg)}kg)` });
+    insights.push({ type: "positive", icon: I.trophy, title: `New PR: ${pr.exercise_name}`, body: `${pr.weight_kg}kg × ${pr.reps} (est. 1RM: ${Math.round(pr.estimated_1rm || pr.weight_kg)}kg)` });
   });
 
   // Group insights by type
@@ -2429,12 +2464,12 @@ function NotificationScreen({ onBack }) {
   };
 
   const NOTIF_TYPES = [
-    { key: "workout_reminders", label: "Workout Reminders", desc: "Get reminded when it's time to train", icon: "💪" },
-    { key: "rest_day_alerts", label: "Rest Day Alerts", desc: "Know when to take a recovery day", icon: "😴" },
-    { key: "pr_celebrations", label: "PR Celebrations", desc: "Celebrate when you hit new records", icon: "🏆" },
-    { key: "weekly_summary", label: "Weekly Summary", desc: "Weekly training recap and stats", icon: "📊" },
-    { key: "ai_coach_tips", label: "AI Coach Tips", desc: "Personalized training insights", icon: "🧠" },
-    { key: "streak_alerts", label: "Streak Alerts", desc: "Keep your training streak alive", icon: "🔥" },
+    { key: "workout_reminders", label: "Workout Reminders", desc: "Get reminded when it's time to train", icon: I.strength },
+    { key: "rest_day_alerts", label: "Rest Day Alerts", desc: "Know when to take a recovery day", icon: I.sleep },
+    { key: "pr_celebrations", label: "PR Celebrations", desc: "Celebrate when you hit new records", icon: I.trophy },
+    { key: "weekly_summary", label: "Weekly Summary", desc: "Weekly training recap and stats", icon: I.chart },
+    { key: "ai_coach_tips", label: "AI Coach Tips", desc: "Personalized training insights", icon: I.brain },
+    { key: "streak_alerts", label: "Streak Alerts", desc: "Keep your training streak alive", icon: I.fire },
   ];
 
   return (
@@ -2565,7 +2600,7 @@ function NotificationScreen({ onBack }) {
   );
 }
 
-function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange }) {
+function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange, iconStyle, onIconStyleChange }) {
   if (!user) return null;
 
   const accountAge = profile?.created_at
@@ -2647,6 +2682,37 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
           </div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 8, textAlign: "center", fontFamily: C.mono }}>
             {{ aurora: "Purple aurora — default", galaxy: "Deep indigo — bold", neon: "Neon lime — classic" }[activeTheme]}
+          </div>
+        </div>
+
+        {/* Icon Style */}
+        <div style={{ background: C.card, borderRadius: 16, padding: 16, border: `1px solid ${C.border}`, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>
+            Icon Style
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[
+              { id: "emoji",   label: "Emoji",   sample: "💪🔥🏆" },
+              { id: "minimal", label: "Minimal", sample: "↑ ▲ ★" },
+            ].map(s => (
+              <button
+                key={s.id}
+                onClick={() => onIconStyleChange(s.id)}
+                style={{
+                  flex: 1, padding: "10px 0", borderRadius: 10,
+                  border: `1.5px solid ${iconStyle === s.id ? C.accent : C.border}`,
+                  background: iconStyle === s.id ? `${C.accent}18` : C.card,
+                  color: iconStyle === s.id ? C.accent : C.dim,
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  cursor: "pointer", fontFamily: C.font,
+                }}>
+                <span style={{ fontSize: 16 }}>{s.sample}</span>
+                <span style={{ fontSize: 12 }}>{s.label}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: C.dim, marginTop: 8, textAlign: "center", fontFamily: C.mono }}>
+            {{ emoji: "Classic emoji icons", minimal: "Clean Unicode symbols" }[iconStyle]}
           </div>
         </div>
 
@@ -2733,9 +2799,9 @@ function PreWorkoutCheckin({ muscleGroups, onSubmit, onSkip }) {
   const [jointComfort, setJointComfort] = useState(0);
   const [dreading, setDreading] = useState(null);
   const setRating = (mg, val) => setRatings(prev => ({ ...prev, [mg]: val }));
-  const emojiScale = ["😊", "😐", "😣", "😖", "🤕"];
+  const emojiScale = I.ratingScale;
   const getEmoji = (val) => emojiScale[Math.min(Math.floor((val - 1) / 2), 4)];
-  const jointEmojis = ["😣", "😖", "😐", "🙂", "💪"];
+  const jointEmojis = I.ratingScale.slice(0, 5);
 
   const handleSubmit = () => {
     onSubmit({ muscleRatings: ratings, joint_comfort: jointComfort || undefined, dreading: dreading === true ? true : undefined });
@@ -2829,8 +2895,8 @@ function PostWorkoutFeedback({ onSubmit, onSkip }) {
   const [step, setStep] = useState(1);
   const [pump, setPump] = useState(0);
   const [difficulty, setDifficulty] = useState(0);
-  const pumpEmojis = ["😐", "🙂", "😊", "😄", "💪", "🔥", "🔥", "💥", "🤯", "🏆"];
-  const difficultyEmojis = ["😴", "🥱", "😌", "🙂", "😤", "💪", "🔥", "🥵", "💀", "☠️"];
+  const pumpEmojis = I.pumpScale;
+  const difficultyEmojis = I.difficultyScale;
 
   const isPump = step === 1;
   const rating = isPump ? pump : difficulty;
@@ -3233,6 +3299,360 @@ function ProgramOnboardingScreen({ program, profile, prs, onEnroll, onBack }) {
   );
 }
 
+/* ═══ PROGRAM BUILDER SCREEN ═══ */
+function ProgramBuilderScreen({ onBack, onCreated }) {
+  const [step, setStep] = useState(0);
+  const [programName, setProgramName] = useState("My Program");
+  const [goal, setGoal] = useState("hypertrophy");
+  const [programColor, setProgramColor] = useState("#A47BFF");
+  const [programIcon, setProgramIcon] = useState("💪");
+  const [activeCategory, setActiveCategory] = useState("Chest");
+  const [selectedExercises, setSelectedExercises] = useState([]);
+  const [exPerSession, setExPerSession] = useState(5);
+  const [durationMin, setDurationMin] = useState(60);
+  const [daysPerWeek, setDaysPerWeek] = useState(3);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const COLORS = ["#A47BFF", "#DFFF3C", "#3CFFF0", "#FF6B3C", "#FF9F3C"];
+  const ICONS = ["💪", "🔥", "🦵", "⚡", "🏋️", "🎯"];
+  const GOALS = ["hypertrophy", "strength", "endurance", "general"];
+  const DURATIONS = [30, 45, 60, 90];
+  const CATEGORIES = Object.keys(EX_LIB);
+
+  const recommended = Math.max(3, Math.min(8, Math.floor(durationMin / 12)));
+
+  const canNext = [
+    programName.trim().length > 0,
+    true,
+    selectedExercises.length >= 1,
+    true,
+  ][step];
+
+  function toggleExercise(ex) {
+    setSelectedExercises(prev => {
+      const exists = prev.find(e => e.name === ex.name);
+      if (exists) return prev.filter(e => e.name !== ex.name);
+      return [...prev, { ...ex, category: activeCategory }];
+    });
+  }
+
+  function buildProgramData() {
+    const split_type = daysPerWeek <= 3 ? "full_body" : daysPerWeek === 4 ? "upper_lower" : "ppl";
+    const isCompound = (ex) => ex.equipment === "Barbell" || ["Pull-ups", "Chest Dip"].includes(ex.name);
+    const baseReps = { hypertrophy: 10, strength: 5, endurance: 15, general: 8 }[goal];
+
+    const UPPER_CATS = ["Chest", "Back", "Shoulders", "Arms"];
+    const PUSH_CATS = ["Chest", "Shoulders"];
+    const PULL_CATS = ["Back", "Arms"];
+
+    // Fill a pool up to exPerSession items, never repeating within a single day
+    const fillSlots = (pool) => pool.slice(0, exPerSession);
+
+    let buckets;
+    if (split_type === "full_body") {
+      buckets = Array.from({ length: daysPerWeek }, (_, dayIdx) =>
+        fillSlots(selectedExercises)
+      );
+    } else if (split_type === "upper_lower") {
+      const upper = selectedExercises.filter(e => UPPER_CATS.includes(e.category));
+      const lower = selectedExercises.filter(e => !UPPER_CATS.includes(e.category));
+      // Fallback: if one bucket is empty, use all exercises
+      const upperPool = upper.length > 0 ? upper : selectedExercises;
+      const lowerPool = lower.length > 0 ? lower : selectedExercises;
+      buckets = Array.from({ length: daysPerWeek }, (_, i) => fillSlots(i % 2 === 0 ? upperPool : lowerPool));
+    } else {
+      const push = selectedExercises.filter(e => PUSH_CATS.includes(e.category));
+      const pull = selectedExercises.filter(e => PULL_CATS.includes(e.category));
+      const legs = selectedExercises.filter(e => e.category === "Legs");
+      // Fallback: empty buckets get all exercises
+      const pushPool = push.length > 0 ? push : selectedExercises;
+      const pullPool = pull.length > 0 ? pull : selectedExercises;
+      const legsPool = legs.length > 0 ? legs : selectedExercises;
+      const pplCycle = [pushPool, pullPool, legsPool];
+      buckets = Array.from({ length: daysPerWeek }, (_, i) => fillSlots(pplCycle[i % 3]));
+    }
+
+    const dayNames = { full_body: ["Full Body A", "Full Body B", "Full Body C", "Full Body D", "Full Body E", "Full Body F"],
+      upper_lower: ["Upper A", "Lower A", "Upper B", "Lower B", "Upper C", "Lower C"],
+      ppl: ["Push", "Pull", "Legs", "Push", "Pull", "Legs"] };
+
+    const days = buckets.map((exList, idx) => ({
+      day_index: idx,
+      name: (dayNames[split_type] || [])[idx] || `Day ${idx + 1}`,
+      muscle_groups: [...new Set(exList.map(e => e.category))],
+      exercises: exList.map((ex, si) => ({
+        exercise_name: ex.name,
+        base_sets: 3,
+        base_reps: baseReps,
+        is_compound: isCompound(ex),
+        sort_order: si,
+      })),
+    }));
+
+    return {
+      name: programName,
+      description: `${daysPerWeek} days/week · ${goal} · built with wizard`,
+      split_type,
+      days_per_week: daysPerWeek,
+      goal,
+      color: programColor,
+      icon: programIcon,
+      days,
+    };
+  }
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError(null);
+    try {
+      const data = buildProgramData();
+      const newProgram = await createUserProgram(data);
+      onCreated(newProgram);
+    } catch (e) {
+      setError(e.message || "Failed to create program");
+      setSaving(false);
+    }
+  }
+
+  const stepTitles = ["Name & Goal", "Session Setup", "Pick Exercises", "Review & Create"];
+
+  return (
+    <div style={{ padding: "0 20px 110px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", padding: "14px 0 6px", gap: 12 }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font }}>Build Custom Program</div>
+          <div style={{ fontSize: 11, color: C.dim }}>Step {step + 1} of 4 — {stepTitles[step]}</div>
+        </div>
+      </div>
+
+      {/* Step indicators */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 20 }}>
+        {[0,1,2,3].map(i => (
+          <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? programColor : "rgba(255,255,255,0.1)", transition: "background 0.3s" }} />
+        ))}
+      </div>
+
+      {/* Step 0 — Name & Goal */}
+      {step === 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Program Name</div>
+            <input value={programName} onChange={e => setProgramName(e.target.value)}
+              style={{ width: "100%", padding: "14px 16px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 16, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Goal</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {GOALS.map(g => (
+                <button key={g} onClick={() => setGoal(g)} style={{
+                  padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer",
+                  background: goal === g ? programColor : C.card,
+                  color: goal === g ? "#000" : C.dim,
+                  border: `1px solid ${goal === g ? programColor : C.border}`,
+                }}>{g.charAt(0).toUpperCase() + g.slice(1)}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Color</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {COLORS.map(c => (
+                <button key={c} onClick={() => setProgramColor(c)} style={{
+                  width: 36, height: 36, borderRadius: "50%", background: c, border: programColor === c ? `3px solid #fff` : "3px solid transparent",
+                  cursor: "pointer", flexShrink: 0,
+                }} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Icon</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {ICONS.map(ic => (
+                <button key={ic} onClick={() => setProgramIcon(ic)} style={{
+                  width: 44, height: 44, borderRadius: 12, fontSize: 22, background: programIcon === ic ? `${programColor}30` : C.card,
+                  border: `1px solid ${programIcon === ic ? programColor : C.border}`, cursor: "pointer",
+                }}>{ic}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 1 — Session Preferences */}
+      {step === 1 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 10, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Days per Week</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <button onClick={() => setDaysPerWeek(d => Math.max(2, d - 1))} style={{ width: 40, height: 40, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 20, cursor: "pointer", fontFamily: C.font }}>−</button>
+              <span style={{ fontSize: 28, fontWeight: 800, color: programColor, fontFamily: C.mono, minWidth: 30, textAlign: "center" }}>{daysPerWeek}</span>
+              <button onClick={() => setDaysPerWeek(d => Math.min(6, d + 1))} style={{ width: 40, height: 40, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 20, cursor: "pointer", fontFamily: C.font }}>+</button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 10, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Exercises per Session</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <button onClick={() => setExPerSession(e => Math.max(3, e - 1))} style={{ width: 40, height: 40, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 20, cursor: "pointer", fontFamily: C.font }}>−</button>
+              <span style={{ fontSize: 28, fontWeight: 800, color: programColor, fontFamily: C.mono, minWidth: 30, textAlign: "center" }}>{exPerSession}</span>
+              <button onClick={() => setExPerSession(e => Math.min(8, e + 1))} style={{ width: 40, height: 40, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 20, cursor: "pointer", fontFamily: C.font }}>+</button>
+            </div>
+            {exPerSession !== recommended && (
+              <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.08)`, fontSize: 12, color: C.dim }}>
+                💡 For {durationMin} min, ~{recommended} exercises is realistic
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: C.dim, marginBottom: 10, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1 }}>Workout Duration</div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {DURATIONS.map(d => (
+                <button key={d} onClick={() => setDurationMin(d)} style={{
+                  padding: "10px 18px", borderRadius: 20, fontSize: 14, fontWeight: 600, fontFamily: C.font, cursor: "pointer",
+                  background: durationMin === d ? programColor : C.card,
+                  color: durationMin === d ? "#000" : C.dim,
+                  border: `1px solid ${durationMin === d ? programColor : C.border}`,
+                }}>{d} min</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2 — Select Exercises */}
+      {step === 2 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ fontSize: 13, color: C.dim }}>Pick your exercises — they'll be distributed across {daysPerWeek} days ({exPerSession}/session). Selected: <span style={{ color: programColor, fontWeight: 700 }}>{selectedExercises.length}</span></div>
+          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+            {CATEGORIES.map(cat => {
+              const count = selectedExercises.filter(e => e.category === cat).length;
+              return (
+                <button key={cat} onClick={() => setActiveCategory(cat)} style={{
+                  padding: "8px 14px", borderRadius: 20, fontSize: 12, fontWeight: 600, fontFamily: C.font, cursor: "pointer", flexShrink: 0,
+                  background: activeCategory === cat ? programColor : C.card,
+                  color: activeCategory === cat ? "#000" : C.dim,
+                  border: `1px solid ${activeCategory === cat ? programColor : C.border}`,
+                }}>
+                  {cat}{count > 0 ? ` (${count})` : ""}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {(EX_LIB[activeCategory] || []).map(ex => {
+              const selected = !!selectedExercises.find(e => e.name === ex.name);
+              return (
+                <button key={ex.name} onClick={() => toggleExercise(ex)} style={{
+                  padding: "10px 14px", borderRadius: 14, fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer",
+                  background: selected ? `${programColor}25` : C.card,
+                  color: selected ? programColor : "#fff",
+                  border: `1px solid ${selected ? programColor : C.border}`,
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  <span>{ex.icon}</span> {ex.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Step 3 — Summary */}
+      {step === 3 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Program card preview */}
+          <div style={{ padding: "18px 16px", borderRadius: 20, border: `1px solid ${programColor}40`, background: `${programColor}08` }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <span style={{ fontSize: 32 }}>{programIcon}</span>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{programName}</div>
+                <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{daysPerWeek} days/week · {goal} · {durationMin} min sessions</div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {["Goal: " + goal, "Split: " + (daysPerWeek <= 3 ? "Full Body" : daysPerWeek === 4 ? "Upper/Lower" : "PPL"), `${selectedExercises.length} exercises`, `${exPerSession}/session`].map(tag => (
+                <span key={tag} style={{ padding: "4px 10px", borderRadius: 10, background: `${programColor}20`, color: programColor, fontSize: 11, fontWeight: 600, fontFamily: C.mono }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Day breakdown */}
+          <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Exercise Distribution</div>
+          {Array.from({ length: daysPerWeek }, (_, i) => {
+            const UPPER_CATS = ["Chest", "Back", "Shoulders", "Arms"];
+            const PUSH_CATS = ["Chest", "Shoulders"];
+            const PULL_CATS = ["Back", "Arms"];
+            const split_type = daysPerWeek <= 3 ? "full_body" : daysPerWeek === 4 ? "upper_lower" : "ppl";
+            const fillSlots = (pool) => pool.slice(0, exPerSession);
+            let exList;
+            if (split_type === "full_body") {
+              exList = fillSlots(selectedExercises);
+            } else if (split_type === "upper_lower") {
+              const upper = selectedExercises.filter(e => UPPER_CATS.includes(e.category));
+              const lower = selectedExercises.filter(e => !UPPER_CATS.includes(e.category));
+              exList = fillSlots(i % 2 === 0 ? (upper.length > 0 ? upper : selectedExercises) : (lower.length > 0 ? lower : selectedExercises));
+            } else {
+              const push = selectedExercises.filter(e => PUSH_CATS.includes(e.category));
+              const pull = selectedExercises.filter(e => PULL_CATS.includes(e.category));
+              const legs = selectedExercises.filter(e => e.category === "Legs");
+              const pplCycle = [push.length > 0 ? push : selectedExercises, pull.length > 0 ? pull : selectedExercises, legs.length > 0 ? legs : selectedExercises];
+              exList = fillSlots(pplCycle[i % 3]);
+            }
+            const dayLabel = (daysPerWeek <= 3 ? ["Full Body A","Full Body B","Full Body C"] : daysPerWeek === 4 ? ["Upper A","Lower A","Upper B","Lower B"] : ["Push","Pull","Legs","Push","Pull","Legs"])[i];
+            return (
+              <div key={i} style={{ padding: "12px 14px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Day {i+1} — {dayLabel}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {exList.map((ex, si) => (
+                    <span key={si} style={{ padding: "3px 8px", borderRadius: 8, background: `${programColor}15`, color: programColor, fontSize: 11, fontFamily: C.mono }}>{ex.icon} {ex.name}</span>
+                  ))}
+                  {exList.length === 0 && <span style={{ fontSize: 12, color: C.dim }}>No exercises assigned</span>}
+                </div>
+              </div>
+            );
+          })}
+
+          {error && <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.3)", color: "#FF6B6B", fontSize: 13 }}>{error}</div>}
+        </div>
+      )}
+
+      {/* Navigation buttons */}
+      <div style={{ display: "flex", gap: 10, marginTop: 28 }}>
+        {step > 0 && (
+          <button onClick={() => setStep(s => s - 1)} style={{
+            flex: 1, padding: "14px", borderRadius: 16, background: C.card, border: `1px solid ${C.border}`,
+            color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: C.font, cursor: "pointer",
+          }}>← Back</button>
+        )}
+        {step < 3 ? (
+          <button onClick={() => canNext && setStep(s => s + 1)} style={{
+            flex: 2, padding: "14px", borderRadius: 16,
+            background: canNext ? programColor : "rgba(255,255,255,0.08)",
+            color: canNext ? "#000" : C.dim,
+            fontSize: 15, fontWeight: 700, fontFamily: C.font, cursor: canNext ? "pointer" : "not-allowed",
+            border: "none",
+          }}>Continue →</button>
+        ) : (
+          <button onClick={handleSubmit} disabled={saving} style={{
+            flex: 2, padding: "14px", borderRadius: 16,
+            background: saving ? "rgba(255,255,255,0.08)" : programColor,
+            color: saving ? C.dim : "#000",
+            fontSize: 15, fontWeight: 700, fontFamily: C.font, cursor: saving ? "not-allowed" : "pointer",
+            border: "none",
+          }}>{saving ? "Creating..." : "Create Program 🚀"}</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══ VOLUME DASHBOARD SCREEN ═══ */
 function VolumeDashboardScreen({ enrollment, volumeStandards, onBack }) {
   if (!enrollment || !enrollment.programs) {
@@ -3334,7 +3754,7 @@ function VolumeDashboardScreen({ enrollment, volumeStandards, onBack }) {
 }
 
 /* ═══ PROGRAM SCREEN ═══ */
-function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight, scheduleRefreshKey }) {
+function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, onStartWorkout, onAbandon, onNav, highlightProgramId, onClearHighlight, scheduleRefreshKey, onCreateProgram }) {
   const [weekView, setWeekView] = useState(enrollment?.current_week || 1);
   const [schedule, setSchedule] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -3384,6 +3804,15 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
             </button>
           ))}
         </div>
+        <button onClick={onCreateProgram} style={{
+          width: "100%", padding: "16px", borderRadius: 20,
+          border: `1px solid rgba(255,255,255,0.1)`,
+          background: "rgba(255,255,255,0.04)",
+          cursor: "pointer", color: C.dim, fontSize: 14,
+          fontFamily: C.font, fontWeight: 600, marginTop: 4
+        }}>
+          + Build Custom Program
+        </button>
       </div>
     );
   }
@@ -3541,6 +3970,9 @@ export default function GAIns() {
   const [activeTheme, setActiveTheme] = useState(
     () => localStorage.getItem("theme") || "aurora"
   );
+  const [iconStyle, setIconStyle] = useState(
+    () => localStorage.getItem("iconStyle") || "emoji"
+  );
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3573,6 +4005,7 @@ export default function GAIns() {
   const [programOnboardingProgram, setProgramOnboardingProgram] = useState(null); // program to enroll in
   const [redoingOnboarding, setRedoingOnboarding] = useState(false);
   const [highlightProgramId, setHighlightProgramId] = useState(null);
+  const [showProgramBuilder, setShowProgramBuilder] = useState(false);
   useEffect(() => { if (screen !== "program") setHighlightProgramId(null); }, [screen]);
 
   const handleDeleteWorkout = async (id) => {
@@ -3825,10 +4258,16 @@ export default function GAIns() {
   }
 
   Object.assign(C, THEMES[activeTheme]);
+  I = ICONS[iconStyle];
 
   const handleThemeChange = (name) => {
     localStorage.setItem("theme", name);
     setActiveTheme(name);
+  };
+
+  const handleIconStyleChange = (style) => {
+    localStorage.setItem("iconStyle", style);
+    setIconStyle(style);
   };
 
   const nav = (t, replace) => {
@@ -3839,7 +4278,7 @@ export default function GAIns() {
     else window.history.pushState({ screen: t }, "");
   };
 
-  const tabs = [{ id: "home", icon: "⌂", label: "Home" }, { id: "program", icon: "📋", label: "Program" }, { id: "coach", icon: "🧠", label: "Coach" }, { id: "history", icon: "☰", label: "History" }, { id: "stats", icon: "◈", label: "Stats" }];
+  const tabs = [{ id: "home", icon: I.home, label: "Home" }, { id: "program", icon: I.program, label: "Program" }, { id: "coach", icon: I.coach, label: "Coach" }, { id: "history", icon: I.history, label: "History" }, { id: "stats", icon: I.stats, label: "Stats" }];
 
   // Program helpers
   const startScheduledWorkout = async (scheduledWorkout) => {
@@ -3909,6 +4348,7 @@ export default function GAIns() {
       await abandonProgram(activeEnrollment.id);
       setActiveEnrollment(null);
       setScheduledWorkoutForToday(null);
+      refreshAppData();
     } catch (e) { console.error("Abandon error:", e); }
   };
 
@@ -3972,7 +4412,8 @@ export default function GAIns() {
           if (prs && prs.length > 0) { setCelebrationPRs(prs); }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
-        {screen === "program" && !programOnboardingProgram && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} />}
+        {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} />}
+        {screen === "program" && !programOnboardingProgram && showProgramBuilder && <ProgramBuilderScreen onBack={() => setShowProgramBuilder(false)} onCreated={(newProgram) => { setShowProgramBuilder(false); setHighlightProgramId(newProgram.id); refreshAppData(); }} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
@@ -4073,6 +4514,8 @@ export default function GAIns() {
           plan={plan}
           activeTheme={activeTheme}
           onThemeChange={handleThemeChange}
+          iconStyle={iconStyle}
+          onIconStyleChange={handleIconStyleChange}
           onClose={() => setProfileModalOpen(false)}
           onNotifications={() => {
             setProfileModalOpen(false);
