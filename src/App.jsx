@@ -946,7 +946,7 @@ function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, worko
         </button>
       )}
       <button onClick={onStart} style={{ width: "100%", padding: "20px 22px", border: "none", borderRadius: 22, background: `linear-gradient(135deg, ${C.accent} 0%, ${C.accent2} 100%)`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, position: "relative", overflow: "hidden" }}>
-        <div style={{ textAlign: "left", position: "relative", zIndex: 1 }}><div style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Tap to begin</div><div style={{ fontSize: 21, fontWeight: 800, color: C.bg, fontFamily: C.font }}>{todayWorkout ? "Free Workout" : "Start Workout"}</div></div>
+        <div style={{ textAlign: "left", position: "relative", zIndex: 1 }}><div style={{ fontSize: 10, fontWeight: 700, color: "rgba(0,0,0,0.45)", fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase", marginBottom: 3 }}>Tap to begin</div><div style={{ fontSize: 21, fontWeight: 800, color: C.bg, fontFamily: C.font }}>{"Start Workout"}</div></div>
         <div style={{ width: 50, height: 50, borderRadius: 16, background: "rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, position: "relative", zIndex: 1 }}>▶</div>
       </button>
       <button onClick={() => onNav("coach")} style={{ width: "100%", padding: "14px 16px", border: `1px solid ${C.ai}25`, borderRadius: 18, background: `${C.ai}08`, cursor: "pointer", display: "flex", alignItems: "center", gap: 12, marginBottom: 22, textAlign: "left" }}>
@@ -1059,7 +1059,8 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
   const [timer, setTimer] = useState(0);
   const [exs, setExs] = useState(() => template.exercises.map(e => ({ ...e, setsData: Array.from({ length: e.sets }, () => ({ weight: e.lastWeight, reps: e.lastReps, done: false })) })));
   const [edit, setEdit] = useState(null); const [ew, setEw] = useState(0); const [er, setEr] = useState(0);
-  const [rest, setRest] = useState(0); const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
+  const [showAdd, setShowAdd] = useState(false); const [addCat, setAddCat] = useState("Chest"); const [addPg, setAddPg] = useState(0);
+  const [stopwatch, setStopwatch] = useState(0); const [swRunning, setSwRunning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showIncompleteWarn, setShowIncompleteWarn] = useState(false);
   const [showReduceSetsPrompt, setShowReduceSetsPrompt] = useState(false);
@@ -1083,7 +1084,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
     return "15+ reps";
   };
   useEffect(() => { const i = setInterval(() => setTimer(t => t + 1), 1000); return () => clearInterval(i); }, []);
-  useEffect(() => { if (rest > 0) { const i = setInterval(() => setRest(t => t <= 1 ? 0 : t - 1), 1000); return () => clearInterval(i); } }, [rest]);
+  useEffect(() => { if (!swRunning) return; const i = setInterval(() => setStopwatch(t => t + 1), 1000); return () => clearInterval(i); }, [swRunning]);
   const fmt = s => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
   const ts = exs.reduce((a, e) => a + e.setsData.length, 0), ds = exs.reduce((a, e) => a + e.setsData.filter(s => s.done).length, 0);
   const catExs = EX_LIB[addCat] || []; const exPgs = []; for (let i = 0; i < catExs.length; i += 4) exPgs.push(catExs.slice(i, i + 4));
@@ -1257,8 +1258,8 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
   return (
     <div style={{ padding: "0 20px 110px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 0 6px" }}><button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>✕</button><button onClick={() => { if (isProgramWorkout && ds < ts) { setShowIncompleteWarn(true); } else { saveWorkout(); } }} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)`, border: "none", color: C.bg, borderRadius: 12, padding: "8px 18px", fontSize: 13, fontWeight: 800, cursor: saving ? "wait" : "pointer", opacity: saving ? 0.6 : 1 }} disabled={saving}>Finish {saving ? "..." : isOnline ? "✓" : "✓ (offline)"}</button></div>
-      <div style={{ textAlign: "center", padding: "10px 0 20px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>{template.label} Day</div><div style={{ fontSize: 42, fontWeight: 800, color: "#fff", fontFamily: C.font, letterSpacing: -2, lineHeight: 1, margin: "4px 0 10px" }}>{fmt(timer)}</div><div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}><div style={{ width: 140, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 2, background: color, width: `${(ds / ts) * 100}%`, transition: "width .4s ease" }} /></div><span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ds}/{ts}</span></div></div>
-      {rest > 0 && <div style={{ background: `${color}10`, border: `1px solid ${color}30`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Rest</div><div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: C.font }}>{fmt(rest)}</div></div><div style={{ display: "flex", gap: 6 }}>{[30, 60].map(s => (<button key={s} onClick={() => setRest(r => r + s)} style={{ background: `${color}18`, border: "none", color, borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer", fontFamily: C.mono }}>+{s}s</button>))}<button onClick={() => setRest(0)} style={{ background: C.card, border: "none", color: "#fff", borderRadius: 10, padding: "7px 11px", fontSize: 11, cursor: "pointer" }}>Skip</button></div></div>}
+      <div style={{ textAlign: "center", padding: "10px 0 16px" }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 2, textTransform: "uppercase" }}>{template.label} Day</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase", marginTop: 8 }}>Workout Duration</div><div style={{ fontSize: 22, fontWeight: 700, color: "rgba(255,255,255,0.55)", fontFamily: C.font, letterSpacing: -1, lineHeight: 1, margin: "2px 0 10px" }}>{fmt(timer)}</div><div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 10 }}><div style={{ width: 140, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}><div style={{ height: "100%", borderRadius: 2, background: color, width: `${(ds / ts) * 100}%`, transition: "width .4s ease" }} /></div><span style={{ fontSize: 12, color: C.dim, fontFamily: C.mono }}>{ds}/{ts}</span></div></div>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: "14px 18px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}><div><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Stopwatch</div><div style={{ fontSize: 32, fontWeight: 800, color: swRunning ? color : "#fff", fontFamily: C.font, letterSpacing: -1 }}>{fmt(stopwatch)}</div></div><div style={{ display: "flex", gap: 8, alignItems: "center" }}><button onClick={() => setSwRunning(r => !r)} style={{ background: swRunning ? `${color}20` : `${color}`, border: "none", color: swRunning ? color : C.bg, borderRadius: 12, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: C.mono }}>{swRunning ? "Stop" : "Start"}</button><button onClick={() => { setStopwatch(0); setSwRunning(false); }} style={{ background: "rgba(255,255,255,0.06)", border: "none", color: "rgba(255,255,255,0.4)", borderRadius: 12, padding: "9px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.mono }}>Reset</button></div></div>
       {exs.map((ex, ei) => (
         <div key={ei} style={{ background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, marginBottom: 14, overflow: "hidden" }}>
           <div style={{ padding: "14px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><div><div style={{ fontSize: 16, fontWeight: 700, color: "#fff" }}>{ex.name}</div><div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono, marginTop: 2 }}>{ex.equipment}</div></div>{ex.rir !== undefined && <span style={{ padding: "3px 7px", borderRadius: 6, background: `${color}15`, border: `1px solid ${color}30`, fontSize: 9, fontWeight: 700, color, fontFamily: C.mono }}>Reps in Reserve {ex.rir}</span>}{(() => { const range = getRepRange(ex.name, ex.setsData[0]?.weight ?? ex.lastWeight); return range ? (<span style={{ padding: "3px 7px", borderRadius: 6, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 9, fontWeight: 700, color: "rgba(255,255,255,0.5)", fontFamily: C.mono }}>{range}</span>) : null; })()}</div></div>{!isProgramWorkout && <button onClick={() => setExs(p => p.filter((_, i) => i !== ei))} style={{ background: "rgba(255,80,80,0.08)", border: "1px solid rgba(255,80,80,0.15)", borderRadius: 8, color: "rgba(255,80,80,0.6)", padding: "4px 8px", fontSize: 11, cursor: "pointer" }}>✕</button>}</div>
@@ -1272,7 +1273,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                 : <button onClick={() => { if (!s.done) { setEdit({ ei, si }); setEw(s.weight); setEr(s.reps); } }} style={{ background: "none", border: "none", cursor: s.done ? "default" : "pointer", textAlign: "left", padding: 0, fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: C.font, textDecoration: !s.done ? "underline dashed rgba(255,255,255,0.15)" : "none", textUnderlineOffset: 3 }}>{s.weight}</button>
               }
               <button onClick={() => { if (!s.done) { setEdit({ ei, si }); setEw(s.weight); setEr(s.reps); } }} style={{ background: "none", border: "none", cursor: s.done ? "default" : "pointer", textAlign: "left", padding: 0, fontSize: 15, fontWeight: 700, color: s.done ? "rgba(255,255,255,0.4)" : "#fff", fontFamily: C.font, textDecoration: !s.done ? "underline dashed rgba(255,255,255,0.15)" : "none", textUnderlineOffset: 3 }}>{s.reps}</button>
-              <div style={{ textAlign: "center" }}><button onClick={() => { setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: e.setsData.map((ss, j) => j === si ? { ...ss, done: !ss.done } : ss) } : e)); if (!s.done) setRest(90); }} style={{ width: 32, height: 32, borderRadius: 10, border: "none", cursor: "pointer", background: s.done ? color : "rgba(255,255,255,0.05)", color: s.done ? C.bg : "rgba(255,255,255,0.15)", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.done ? "✓" : "○"}</button></div>
+              <div style={{ textAlign: "center" }}><button onClick={() => { setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: e.setsData.map((ss, j) => j === si ? { ...ss, done: !ss.done } : ss) } : e)); }} style={{ width: 32, height: 32, borderRadius: 10, border: "none", cursor: "pointer", background: s.done ? color : "rgba(255,255,255,0.05)", color: s.done ? C.bg : "rgba(255,255,255,0.15)", fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>{s.done ? "✓" : "○"}</button></div>
             </div>
           ))}
           {!isProgramWorkout && <div style={{ padding: "8px 16px 12px" }}><button onClick={() => setExs(p => p.map((e, i) => i === ei ? { ...e, setsData: [...e.setsData, { weight: e.lastWeight, reps: e.lastReps, done: false }] } : e))} style={{ background: "none", border: "1px dashed rgba(255,255,255,0.08)", borderRadius: 10, color: "rgba(255,255,255,0.25)", padding: "7px", width: "100%", fontSize: 12, cursor: "pointer" }}>+ Add Set</button></div>}
@@ -1317,7 +1318,8 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
                     setShowIncompleteWarn(false);
                     setShowReduceSetsPrompt(false);
                     await saveWorkout();
-                    try { await reduceSetsFutureWorkouts(template.scheduledWorkoutId); } catch (e) { console.error("reduceSetsFutureWorkouts error:", e); }
+                    const incompleteExercises = exs.filter(e => e.setsData.some(s => !s.done)).map(e => e.name);
+                    try { await reduceSetsFutureWorkouts(template.scheduledWorkoutId, incompleteExercises); } catch (e) { console.error("reduceSetsFutureWorkouts error:", e); }
                   }} style={{ padding: "15px", borderRadius: 16, border: "none", background: `linear-gradient(135deg, ${color}, ${color}CC)`, color: C.bg, fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: C.font }}>
                     Yes, reduce sets
                   </button>
@@ -1393,7 +1395,7 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
     if (dotGrid[i]) streak++; else if (streak > 0) break;
   }
   const trainedIn28 = dotGrid.filter(Boolean).length;
-  const target = (profile?.training_frequency || 3) * 4;
+  const target = (profile?.training_frequency ?? 3) * 4;
   const completionRate = Math.min(100, Math.round(trainedIn28 / target * 100));
 
   // Insight C — Volume delta
@@ -1520,7 +1522,7 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
           {/* C. Volume Trend */}
           <div style={cardStyle}>
             <div style={labelStyle}>Volume Trend</div>
-            <MiniChart data={volumeTrend.length > 0 ? volumeTrend : (thisWeekVol > 0 ? [{ w: "W1", v: Math.round(thisWeekVol) }] : [{ w: "W1", v: 0 }])} h={70} />
+            <MiniChart data={volumeTrend.length > 0 ? volumeTrend.map((t, i) => ({ w: t.w || `W${i + 1}`, v: t.v || t.volume || 0 })) : (thisWeekVol > 0 ? [{ w: "W1", v: Math.round(thisWeekVol) }] : [{ w: "W1", v: 0 }])} h={70} />
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }}>
               <span style={{ fontSize: 13, color: C.dim }}>
                 This week: {Math.round(thisWeekVol).toLocaleString()}kg

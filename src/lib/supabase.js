@@ -601,7 +601,7 @@ export async function applyDifficultyToFutureWorkouts(scheduledWorkoutId, diffic
   }
 }
 
-export async function reduceSetsFutureWorkouts(scheduledWorkoutId) {
+export async function reduceSetsFutureWorkouts(scheduledWorkoutId, incompleteExerciseNames) {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
 
@@ -622,11 +622,17 @@ export async function reduceSetsFutureWorkouts(scheduledWorkoutId) {
     .neq('week_number', 5);
   if (futureErr || !futureWorkouts?.length) return;
 
+  const incompleteSet = incompleteExerciseNames
+    ? new Set(incompleteExerciseNames.map(n => n.toLowerCase()))
+    : null;
+
   for (const fw of futureWorkouts) {
-    const exercises = (fw.prescribed_exercises || []).map(ex => ({
-      ...ex,
-      sets: Math.max(1, (ex.sets || 3) - 1),
-    }));
+    const exercises = (fw.prescribed_exercises || []).map(ex => {
+      if (incompleteSet && !incompleteSet.has((ex.exercise_name || ex.name || '').toLowerCase())) {
+        return ex;
+      }
+      return { ...ex, sets: Math.max(1, (ex.sets || 3) - 1) };
+    });
     await supabase
       .from('scheduled_workouts')
       .update({ prescribed_exercises: exercises })
