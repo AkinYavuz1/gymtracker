@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { signUp, signIn, signOut, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare } from "./lib/supabase";
+import { useState, useEffect, useRef, Component } from "react";
+import { signUp, signIn, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession } from "./lib/supabase";
 import { calculatePrescription, generatePrescriptions, WEEK_CONFIG, isDeloadWeek, getWeekLabel, recommendPrograms, getMuscleGroup, getVolumeZoneLabel, getVolumeZoneColor } from "./lib/programEngine";
 import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlineStorage";
 import { getExerciseGif } from "./lib/exerciseGifs";
@@ -111,14 +111,50 @@ function RepBubbles({ value, onChange, color = C.accent }) {
   return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}><div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Reps</div><div style={{ display: "flex", alignItems: "center", gap: 12 }}><button onClick={() => onChange(Math.max(1, value - 1))} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button><div style={{ fontSize: 38, fontWeight: 800, color: "#fff", fontFamily: C.font, minWidth: 60, textAlign: "center", lineHeight: 1 }}>{value}</div><button onClick={() => onChange(value + 1)} style={{ width: 48, height: 48, borderRadius: 14, border: `1px solid ${color}40`, background: `${color}12`, color, fontSize: 22, fontWeight: 300, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button></div><div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>{[1, 2, 3, 4, 5, 6, 10, 15].map(n => (<button key={n} onClick={() => onChange(n)} style={{ padding: "6px 12px", borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.02)", color: "rgba(255,255,255,0.5)", fontSize: 13, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>{n}</button>))}</div></div>);
 }
 
+// Map plan IDs to Stripe price IDs (set in .env.local)
+const STRIPE_PRICE_IDS = {
+  pro:       import.meta.env.VITE_STRIPE_PRO_PRICE_ID || "",
+  unlimited: import.meta.env.VITE_STRIPE_UNLIMITED_PRICE_ID || "",
+};
+
 /* ═══ PRICING SCREEN ═══ */
 function PricingScreen({ currentPlan, onSelect, onBack }) {
   const [selected, setSelected] = useState(currentPlan);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const plans = [
     { id: "free", name: "Free", price: "$0", period: "forever", queries: "5/day", features: ["Workout tracking", "Exercise library", "Basic stats", "5 AI queries/day"], color: "rgba(255,255,255,0.4)", popular: false },
     { id: "pro", name: "Pro", price: "$4.99", period: "/month", queries: "30/day", features: ["Everything in Free", "30 AI queries/day", "Advanced analytics", "Export your data", "Priority support"], color: "#DFFF3C", popular: true },
     { id: "unlimited", name: "Unlimited", price: "$9.99", period: "/month", queries: "Unlimited", features: ["Everything in Pro", "Unlimited AI queries", "Custom templates", "Workout insights", "Early access features"], color: "#A47BFF", popular: false },
   ];
+
+  const handleUpgrade = async (planId) => {
+    if (planId === "free") { onSelect("free"); return; }
+    const priceId = STRIPE_PRICE_IDS[planId];
+    if (!priceId) {
+      setCheckoutError("Stripe price not configured. Add VITE_STRIPE_PRO_PRICE_ID / VITE_STRIPE_UNLIMITED_PRICE_ID to .env.local.");
+      return;
+    }
+    setCheckoutLoading(true);
+    setCheckoutError("");
+    try {
+      const { url } = await createCheckoutSession(priceId);
+      // Open checkout in native browser (Capacitor) or same tab (web)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const { Browser } = await import("@capacitor/browser");
+          await Browser.open({ url });
+        } catch {
+          window.location.href = url;
+        }
+      } else {
+        window.location.href = url;
+      }
+    } catch (e) {
+      setCheckoutError(e.message || "Failed to start checkout");
+    }
+    setCheckoutLoading(false);
+  };
 
   return (
     <div style={{ padding: "0 20px 110px" }}>
@@ -163,13 +199,17 @@ function PricingScreen({ currentPlan, onSelect, onBack }) {
       })}
 
       {selected !== currentPlan && (
-        <button onClick={() => onSelect(selected)} style={{
+        <button onClick={() => handleUpgrade(selected)} disabled={checkoutLoading} style={{
           width: "100%", padding: "16px", borderRadius: 16, border: "none", marginTop: 8,
-          background: `linear-gradient(135deg, ${PLANS[selected].color}, ${PLANS[selected].color}CC)`,
-          color: C.bg, fontSize: 16, fontWeight: 800, cursor: "pointer", fontFamily: C.font,
+          background: checkoutLoading ? "rgba(255,255,255,0.1)" : `linear-gradient(135deg, ${PLANS[selected].color}, ${PLANS[selected].color}CC)`,
+          color: checkoutLoading ? C.dim : C.bg, fontSize: 16, fontWeight: 800, cursor: checkoutLoading ? "wait" : "pointer", fontFamily: C.font,
         }}>
-          {selected === "free" ? "Downgrade to Free" : `Upgrade to ${PLANS[selected].name}`}
+          {checkoutLoading ? "Opening checkout..." : selected === "free" ? "Downgrade to Free" : `Upgrade to ${PLANS[selected].name}`}
         </button>
+      )}
+
+      {checkoutError && (
+        <div style={{ color: "#FF6B3C", fontSize: 12, fontFamily: C.font, marginTop: 10, textAlign: "center" }}>{checkoutError}</div>
       )}
 
       <div style={{ textAlign: "center", marginTop: 14, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
@@ -765,20 +805,28 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
 }
 
 /* ═══ AUTH ═══ */
-function AuthScreen({ onSignUp, onSignIn }) {
+function AuthScreen({ onSignUp, onSignIn, onLegal }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetSent, setResetSent] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  const switchMode = (m) => { setMode(m); setError(""); setResetSent(false); setShowPw(false); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      if (mode === "signup") {
+      if (mode === "forgot") {
+        const { error: err } = await resetPassword(email);
+        if (err) setError(err.message || "Failed to send reset email");
+        else setResetSent(true);
+      } else if (mode === "signup") {
         const { error: err } = await signUp(email, password, name);
         if (err) setError(err.message || "Signup failed");
         else { setEmail(""); setPassword(""); setName(""); setTimeout(onSignUp, 500); }
@@ -798,98 +846,51 @@ function AuthScreen({ onSignUp, onSignIn }) {
       <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", marginBottom: 8, fontFamily: C.font }}>gAIns</div>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 40 }}>AI-powered strength training</div>
 
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {mode === "signup" && (
-          <input
-            type="text"
-            placeholder="Full Name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            disabled={loading}
-            style={{
-              padding: "12px 14px",
-              borderRadius: 12,
-              border: `1px solid ${C.border}`,
-              background: C.card,
-              color: "#fff",
-              fontSize: 13,
-              fontFamily: C.font,
-              outline: "none"
-            }}
-          />
-        )}
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          disabled={loading}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: `1px solid ${C.border}`,
-            background: C.card,
-            color: "#fff",
-            fontSize: 13,
-            fontFamily: C.font,
-            outline: "none"
-          }}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={loading}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: `1px solid ${C.border}`,
-            background: C.card,
-            color: "#fff",
-            fontSize: 13,
-            fontFamily: C.font,
-            outline: "none"
-          }}
-        />
-        {error && <div style={{ color: "#FF6B3C", fontSize: 12, fontFamily: C.font }}>{error}</div>}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "13px 14px",
-            borderRadius: 12,
-            border: "none",
-            background: C.accent,
-            color: C.bg,
-            fontSize: 14,
-            fontWeight: 700,
-            fontFamily: C.font,
-            cursor: loading ? "wait" : "pointer",
-            opacity: loading ? 0.6 : 1
-          }}
-        >
-          {loading ? "..." : mode === "login" ? "Sign In" : "Sign Up"}
-        </button>
-      </form>
-
-      <div style={{ fontSize: 12, color: C.dim, marginTop: 24 }}>
-        {mode === "login" ? "No account? " : "Have an account? "}
-        <button
-          onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
-          style={{
-            background: "none",
-            border: "none",
-            color: C.accent,
-            cursor: "pointer",
-            fontSize: 12,
-            fontWeight: 700,
-            fontFamily: C.font,
-            textDecoration: "underline"
-          }}
-        >
-          {mode === "login" ? "Sign Up" : "Sign In"}
-        </button>
+      {mode === "forgot" && resetSent ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
+          <div style={{ fontSize: 32 }}>📧</div>
+          <div style={{ color: "#fff", fontSize: 16, fontWeight: 700, fontFamily: C.font }}>Check your email</div>
+          <div style={{ color: C.dim, fontSize: 13, fontFamily: C.font, lineHeight: 1.6 }}>We've sent a password reset link to <strong style={{ color: "#fff" }}>{email}</strong></div>
+          <button onClick={() => switchMode("login")} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: C.font, textDecoration: "underline", marginTop: 8 }}>Back to Sign In</button>
+        </div>
+      ) : (
+        <>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {mode === "forgot" && (
+              <div style={{ color: C.dim, fontSize: 13, fontFamily: C.font, marginBottom: 4, textAlign: "left" }}>Enter your email and we'll send you a reset link.</div>
+            )}
+            {mode === "signup" && (
+              <input type="text" placeholder="Full Name" value={name} onChange={(e) => setName(e.target.value)} disabled={loading} style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 13, fontFamily: C.font, outline: "none" }} />
+            )}
+            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={loading} style={{ padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 13, fontFamily: C.font, outline: "none" }} />
+            {mode !== "forgot" && (
+              <div style={{ position: "relative" }}>
+                <input type={showPw ? "text" : "password"} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={loading} style={{ width: "100%", padding: "12px 44px 12px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 13, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
+                <button type="button" onClick={() => setShowPw(v => !v)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.dim, fontSize: 16, padding: 0, lineHeight: 1 }}>{showPw ? "🙈" : "👁"}</button>
+              </div>
+            )}
+            {mode === "login" && (
+              <div style={{ textAlign: "right", marginTop: -4 }}>
+                <button type="button" onClick={() => switchMode("forgot")} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12, fontFamily: C.font }}>Forgot password?</button>
+              </div>
+            )}
+            {error && <div style={{ color: "#FF6B3C", fontSize: 12, fontFamily: C.font }}>{error}</div>}
+            <button type="submit" disabled={loading} style={{ padding: "13px 14px", borderRadius: 12, border: "none", background: C.accent, color: C.bg, fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: loading ? "wait" : "pointer", opacity: loading ? 0.6 : 1 }}>
+              {loading ? "..." : mode === "login" ? "Sign In" : mode === "signup" ? "Sign Up" : "Send Reset Link"}
+            </button>
+          </form>
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 24 }}>
+            {mode === "forgot" ? "Remembered it? " : mode === "login" ? "No account? " : "Have an account? "}
+            <button onClick={() => switchMode(mode === "signup" ? "login" : mode === "forgot" ? "login" : "signup")} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: C.font, textDecoration: "underline" }}>
+              {mode === "signup" ? "Sign In" : mode === "forgot" ? "Sign In" : "Sign Up"}
+            </button>
+          </div>
+        </>
+      )}
+      <div style={{ marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", fontFamily: C.font }}>
+        <button onClick={() => onLegal && onLegal("privacy")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11, fontFamily: C.font, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
+        <span style={{ margin: "0 8px" }}>·</span>
+        <button onClick={() => onLegal && onLegal("terms")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11, fontFamily: C.font, textDecoration: "underline", padding: 0 }}>Terms of Service</button>
       </div>
     </div>
   );
@@ -2609,7 +2610,70 @@ function NotificationScreen({ onBack }) {
   );
 }
 
-function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange, iconStyle, onIconStyleChange }) {
+function ChangePasswordSection() {
+  const [open, setOpen] = useState(false);
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async () => {
+    setError("");
+    if (!currentPw || !newPw || !confirmPw) { setError("All fields are required"); return; }
+    if (newPw.length < 6) { setError("New password must be at least 6 characters"); return; }
+    if (newPw !== confirmPw) { setError("New passwords don't match"); return; }
+    setLoading(true);
+    try {
+      await updatePassword(currentPw, newPw);
+      setSuccess(true);
+      setCurrentPw(""); setNewPw(""); setConfirmPw("");
+      setTimeout(() => { setSuccess(false); setOpen(false); }, 2000);
+    } catch (e) {
+      setError(e.message);
+    }
+    setLoading(false);
+  };
+
+  const pwInput = (value, setter, show, setShow, placeholder) => (
+    <div style={{ position: "relative", marginBottom: 10 }}>
+      <input type={show ? "text" : "password"} placeholder={placeholder} value={value} onChange={e => setter(e.target.value)} disabled={loading} style={{ width: "100%", padding: "11px 44px 11px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.bg, color: "#fff", fontSize: 13, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
+      <button type="button" onClick={() => setShow(v => !v)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.dim, fontSize: 15, padding: 0, lineHeight: 1 }}>{show ? "🙈" : "👁"}</button>
+    </div>
+  );
+
+  return (
+    <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, marginBottom: 12, overflow: "hidden" }}>
+      <button onClick={() => { setOpen(v => !v); setError(""); setSuccess(false); }} style={{ width: "100%", padding: "14px", background: "none", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: C.font, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 18 }}>🔑</span> Change Password</span>
+        <span style={{ fontSize: 16, color: C.dim, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>→</span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 14px" }}>
+          {success ? (
+            <div style={{ textAlign: "center", color: "#4ade80", fontSize: 14, fontFamily: C.font, padding: "8px 0" }}>✓ Password updated successfully</div>
+          ) : (
+            <>
+              {pwInput(currentPw, setCurrentPw, showCurrent, setShowCurrent, "Current password")}
+              {pwInput(newPw, setNewPw, showNew, setShowNew, "New password")}
+              {pwInput(confirmPw, setConfirmPw, showConfirm, setShowConfirm, "Confirm new password")}
+              {error && <div style={{ color: "#FF6B3C", fontSize: 12, fontFamily: C.font, marginBottom: 10 }}>{error}</div>}
+              <button onClick={handleSubmit} disabled={loading} style={{ width: "100%", padding: "12px", borderRadius: 10, border: "none", background: C.accent, color: C.bg, fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: loading ? "wait" : "pointer", opacity: loading ? 0.6 : 1 }}>
+                {loading ? "Updating..." : "Update Password"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange, iconStyle, onIconStyleChange, onLegal, onDeleteAccount }) {
   if (!user) return null;
 
   const accountAge = profile?.created_at
@@ -2730,6 +2794,9 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
           </div>
         </div>
 
+        {/* Change Password */}
+        <ChangePasswordSection />
+
         {/* Notifications Button */}
         <button
           onClick={onNotifications}
@@ -2782,6 +2849,53 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
             Update Goals & Profile
           </span>
           <span style={{ fontSize: 16, color: C.dim }}>→</span>
+        </button>
+
+        {/* Legal Button */}
+        <button
+          onClick={() => onLegal && onLegal("privacy")}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 14,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            color: C.dim,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: C.font,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18 }}>📄</span>
+            Privacy Policy &amp; Terms
+          </span>
+          <span style={{ fontSize: 16, color: C.dim }}>→</span>
+        </button>
+
+        {/* Delete Account Button */}
+        <button
+          onClick={() => onDeleteAccount && onDeleteAccount()}
+          style={{
+            width: "100%",
+            padding: "14px",
+            borderRadius: 14,
+            border: "1px solid rgba(255,80,80,0.15)",
+            background: "transparent",
+            color: "rgba(255,80,80,0.5)",
+            fontSize: 13,
+            fontWeight: 600,
+            fontFamily: C.font,
+            cursor: "pointer",
+            marginBottom: 12,
+          }}
+        >
+          Delete Account
         </button>
 
         {/* Logout Button */}
@@ -3985,6 +4099,117 @@ function ProgramScreen({ enrollment, programs, profile, prs, onStartOnboarding, 
   );
 }
 
+/* ═══ LEGAL SCREEN ═══ */
+function LegalScreen({ onBack, initialTab = "privacy" }) {
+  const [tab, setTab] = useState(initialTab);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.bg }}>
+      <div style={{ display: "flex", alignItems: "center", padding: "16px 20px 8px", gap: 12, flexShrink: 0 }}>
+        <button onClick={onBack} style={{ background: C.card, border: `1px solid ${C.border}`, color: "#fff", borderRadius: 12, padding: "8px 14px", fontSize: 13, cursor: "pointer", fontFamily: C.font }}>← Back</button>
+        <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", fontFamily: C.font }}>Legal</div>
+      </div>
+      <div style={{ display: "flex", gap: 8, padding: "0 20px 12px", flexShrink: 0 }}>
+        <button onClick={() => setTab("privacy")} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1.5px solid ${tab === "privacy" ? C.accent : C.border}`, background: tab === "privacy" ? `${C.accent}15` : C.card, color: tab === "privacy" ? C.accent : C.dim, fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer" }}>Privacy Policy</button>
+        <button onClick={() => setTab("terms")} style={{ flex: 1, padding: "9px 0", borderRadius: 10, border: `1.5px solid ${tab === "terms" ? C.accent : C.border}`, background: tab === "terms" ? `${C.accent}15` : C.card, color: tab === "terms" ? C.accent : C.dim, fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: "pointer" }}>Terms of Service</button>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 40px" }}>
+        {tab === "privacy" ? (
+          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: C.font, lineHeight: 1.75 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Privacy Policy</div>
+            <div style={{ color: C.dim, fontSize: 11, marginBottom: 20 }}>Last updated: March 2026</div>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>1. Information We Collect</div>
+            <p style={{ marginBottom: 16 }}>We collect information you provide when creating an account (name, email address), health and fitness data you enter (body weight, workout history, personal records, goals), device information, and app usage data to improve the service.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>2. How We Use Your Information</div>
+            <p style={{ marginBottom: 16 }}>We use your data to provide and personalise the gAIns service, power AI coaching features, process subscription payments via Stripe, send you important account notifications, and improve app features and performance.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>3. Data Sharing</div>
+            <p style={{ marginBottom: 16 }}>We do not sell your personal data. We share data only with service providers necessary to operate gAIns: Supabase (database and authentication), Anthropic (AI coaching — prompts and workout context), and Stripe (payment processing). Each provider is bound by their own privacy policy.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>4. Health Data</div>
+            <p style={{ marginBottom: 16 }}>Workout, body composition, and performance data you enter is used solely to provide the service. It is not shared with advertisers or third-party analytics platforms.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>5. Data Retention</div>
+            <p style={{ marginBottom: 16 }}>Your data is retained while your account is active. You may delete your account at any time from the Profile screen, which permanently removes all your data from our servers.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>6. Security</div>
+            <p style={{ marginBottom: 16 }}>We use industry-standard encryption and Supabase Row Level Security to protect your data. Passwords are hashed and never stored in plain text.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>7. Children</div>
+            <p style={{ marginBottom: 16 }}>gAIns is not intended for users under 13. We do not knowingly collect data from children.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>8. Contact</div>
+            <p style={{ marginBottom: 4 }}>For privacy questions or data requests, contact us at: privacy@gains.app</p>
+          </div>
+        ) : (
+          <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: C.font, lineHeight: 1.75 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 16 }}>Terms of Service</div>
+            <div style={{ color: C.dim, fontSize: 11, marginBottom: 20 }}>Last updated: March 2026</div>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>1. Acceptance</div>
+            <p style={{ marginBottom: 16 }}>By creating an account or using gAIns, you agree to these Terms of Service. If you do not agree, do not use the app.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>2. Use of Service</div>
+            <p style={{ marginBottom: 16 }}>gAIns is a fitness tracking and AI coaching app for personal, non-commercial use. You must be at least 13 years old to use the service. You are responsible for maintaining the security of your account credentials.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>3. AI Coaching</div>
+            <p style={{ marginBottom: 16 }}>AI coaching suggestions are informational only and do not constitute professional medical or fitness advice. Consult a qualified professional before starting any exercise programme. Use AI recommendations at your own risk.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>4. Subscriptions & Payments</div>
+            <p style={{ marginBottom: 16 }}>Paid plans are billed monthly via Stripe. You may cancel anytime; cancellation takes effect at the end of the current billing period. Refunds are handled on a case-by-case basis — contact us within 7 days of a charge if you believe it was in error.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>5. Prohibited Conduct</div>
+            <p style={{ marginBottom: 16 }}>You may not reverse-engineer, scrape, or abuse the service; share your account; or use gAIns for any unlawful purpose.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>6. Disclaimer of Warranties</div>
+            <p style={{ marginBottom: 16 }}>gAIns is provided "as is" without warranties of any kind. We do not guarantee uninterrupted availability or that AI suggestions will be accurate.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>7. Limitation of Liability</div>
+            <p style={{ marginBottom: 16 }}>To the maximum extent permitted by law, gAIns and its developers shall not be liable for any indirect, incidental, or consequential damages arising from use of the app.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>8. Changes</div>
+            <p style={{ marginBottom: 16 }}>We may update these terms. Continued use of the app after changes constitutes acceptance of the revised terms.</p>
+
+            <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>9. Contact</div>
+            <p style={{ marginBottom: 4 }}>For questions about these terms: legal@gains.app</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══ ERROR BOUNDARY ═══ */
+export class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, info) { console.error("ErrorBoundary caught:", error, info); }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0E0F14", padding: 32, textAlign: "center" }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: "'Outfit', sans-serif", marginBottom: 8 }}>Something went wrong</div>
+        <div style={{ fontSize: 14, color: "rgba(255,255,255,0.4)", fontFamily: "'Outfit', sans-serif", marginBottom: 32, maxWidth: 280, lineHeight: 1.6 }}>
+          The app ran into an unexpected error. Tap below to restart.
+        </div>
+        <button
+          onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+          style={{ padding: "14px 32px", borderRadius: 14, border: "none", background: "#A78BFA", color: "#0E0F14", fontSize: 15, fontWeight: 700, fontFamily: "'Outfit', sans-serif", cursor: "pointer" }}
+        >
+          Restart App
+        </button>
+        {this.state.error && (
+          <div style={{ marginTop: 24, fontSize: 11, color: "rgba(255,255,255,0.2)", fontFamily: "monospace", maxWidth: 320, wordBreak: "break-word" }}>
+            {this.state.error.message}
+          </div>
+        )}
+      </div>
+    );
+  }
+}
+
 /* ═══ APP SHELL ═══ */
 export default function GAIns() {
   const [activeTheme, setActiveTheme] = useState(
@@ -3997,6 +4222,10 @@ export default function GAIns() {
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [deleteAccountModal, setDeleteAccountModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
+  const [legalScreen, setLegalScreen] = useState(null); // null | "privacy" | "terms"
   const [celebrationPRs, setCelebrationPRs] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingSync, setPendingSync] = useState(0);
@@ -4212,6 +4441,21 @@ export default function GAIns() {
     try { await signOut(); } catch (e) { console.error("Sign out error:", e); }
   };
 
+  const handleDeleteAccountConfirm = async () => {
+    if (deleteConfirmText !== "DELETE") return;
+    setDeleteAccountLoading(true);
+    try {
+      await deleteUserAccount();
+      setDeleteAccountModal(false);
+      setDeleteConfirmText("");
+      handleLogout();
+    } catch (e) {
+      console.error("Delete account error:", e);
+      alert("Failed to delete account: " + (e.message || "Unknown error"));
+    }
+    setDeleteAccountLoading(false);
+  };
+
   const needsOnboarding = user && profile && profile.onboarding_complete === false;
 
   // Show loading or auth screen
@@ -4272,7 +4516,11 @@ export default function GAIns() {
           .app-shell { width: 100vw; height: 100dvh; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
           @media (min-width: 500px) { .app-shell { width: 390px; height: 844px; margin: 20px auto; border-radius: 44px; box-shadow: 0 25px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06); padding-top: 0; padding-bottom: 0; } }
         `}</style>
-        <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} />
+        {legalScreen ? (
+          <LegalScreen onBack={() => setLegalScreen(null)} initialTab={legalScreen} />
+        ) : (
+          <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} onLegal={(tab) => setLegalScreen(tab)} />
+        )}
       </div>
     );
   }
@@ -4452,6 +4700,12 @@ export default function GAIns() {
       )}
       <div style={{ position: "absolute", bottom: "calc(6px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
 
+      {legalScreen && (
+        <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 550, display: "flex", flexDirection: "column" }}>
+          <LegalScreen onBack={() => setLegalScreen(null)} initialTab={legalScreen} />
+        </div>
+      )}
+
       {celebrationPRs && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
           <div style={{ background: "#111113", borderRadius: 24, padding: "32px 24px", maxWidth: 380, width: "100%", maxHeight: "80vh", overflowY: "auto" }}>
@@ -4552,7 +4806,56 @@ export default function GAIns() {
             setProfileModalOpen(false);
             handleLogout();
           }}
+          onLegal={(tab) => {
+            setProfileModalOpen(false);
+            setLegalScreen(tab);
+          }}
+          onDeleteAccount={() => {
+            setProfileModalOpen(false);
+            setDeleteAccountModal(true);
+            setDeleteConfirmText("");
+          }}
         />
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {deleteAccountModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(16px)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: C.card, borderRadius: 24, padding: "28px 24px", maxWidth: 360, width: "100%" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#FF6B3C", fontFamily: C.font, marginBottom: 8 }}>Delete Account</div>
+              <div style={{ fontSize: 13, color: C.dim, fontFamily: C.font, lineHeight: 1.6 }}>
+                This will permanently delete your account and all your data including workouts, PRs, and subscription. This cannot be undone.
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: C.dim, fontFamily: C.font, marginBottom: 8 }}>Type <strong style={{ color: "#fff" }}>DELETE</strong> to confirm</div>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+                style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${deleteConfirmText === "DELETE" ? "#FF6B3C" : C.border}`, background: C.bg, color: "#fff", fontSize: 14, fontFamily: C.font, outline: "none", boxSizing: "border-box" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => { setDeleteAccountModal(false); setDeleteConfirmText(""); }}
+                style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 14, fontWeight: 600, fontFamily: C.font, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccountConfirm}
+                disabled={deleteConfirmText !== "DELETE" || deleteAccountLoading}
+                style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", background: deleteConfirmText === "DELETE" ? "#FF6B3C" : "rgba(255,80,80,0.2)", color: deleteConfirmText === "DELETE" ? "#fff" : "rgba(255,80,80,0.4)", fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: deleteConfirmText === "DELETE" ? "pointer" : "not-allowed" }}
+              >
+                {deleteAccountLoading ? "Deleting..." : "Delete Forever"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Pre-workout soreness check-in modal */}

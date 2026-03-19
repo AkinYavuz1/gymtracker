@@ -999,3 +999,20 @@ VALUES
 ('Triceps',    6, 'per_session', 2, 3, 3, 4, 4, 5),
 ('Calves',     6, 'per_session', 2, 3, 3, 5, 5, 7),
 ('Abs',        6, 'per_session', 2, 3, 3, 4, 4, 5);
+
+
+-- ─── ACCOUNT DELETION ───────────────────────────────────────
+
+-- Allows a user to delete their own account.
+-- All child data cascades automatically via FK → auth.users → profiles.
+-- Must be called with the authenticated user's own ID.
+CREATE OR REPLACE FUNCTION public.delete_user_account(p_user_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  -- Verify the caller is deleting their own account
+  IF auth.uid() != p_user_id THEN
+    RAISE EXCEPTION 'Not authorised to delete this account';
+  END IF;
+  DELETE FROM auth.users WHERE id = p_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

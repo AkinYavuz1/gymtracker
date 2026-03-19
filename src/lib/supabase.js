@@ -44,6 +44,21 @@ export async function signIn(email, password) {
   return { data, error };
 }
 
+export async function resetPassword(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
+  return { error };
+}
+
+export async function updatePassword(currentPassword, newPassword) {
+  const session = await getSession();
+  if (!session?.user?.email) throw new Error('Not authenticated');
+  // Re-authenticate with current password first
+  const { error: authErr } = await supabase.auth.signInWithPassword({ email: session.user.email, password: currentPassword });
+  if (authErr) throw new Error('Current password is incorrect');
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   return { error };
@@ -846,6 +861,38 @@ export async function deleteUserProgram(programId) {
  * Fetch per-session volume standards for a given training frequency.
  * Returns a map: { [muscle_group]: { mev_low, mev_high, mav_low, mav_high, mrv_low, mrv_high } }
  */
+export async function createCheckoutSession(priceId) {
+  const session = await getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const response = await fetch(
+    `${supabaseUrl}/functions/v1/create-checkout`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ priceId }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Checkout failed');
+  }
+
+  return await response.json(); // { url: "https://checkout.stripe.com/..." }
+}
+
+export async function deleteUserAccount() {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase.rpc('delete_user_account', { p_user_id: session.user.id });
+  if (error) throw error;
+  await supabase.auth.signOut();
+}
+
 export async function getVolumeStandards(daysPerWeek) {
   const days = [3, 4, 5, 6].includes(daysPerWeek) ? daysPerWeek : 3;
   const { data, error } = await supabase

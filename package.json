@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "db:push": "supabase db push",
-    "functions:deploy": "supabase functions deploy coach && supabase functions deploy stripe-webhook && supabase functions deploy send-notification",
+    "functions:deploy": "supabase functions deploy coach && supabase functions deploy stripe-webhook && supabase functions deploy create-checkout && supabase functions deploy send-notification",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -17,6 +17,7 @@
   "dependencies": {
     "@capacitor/android": "^8.2.0",
     "@capacitor/app": "^8.0.1",
+    "@capacitor/browser": "^8.0.2",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/push-notifications": "^8.0.2",

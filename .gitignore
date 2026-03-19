@@ -5,3 +5,8 @@ dist/
 .env.*.local
 *.log
 .DS_Store
+android/app/google-services.json
+android/app/src/main/assets/
+android/keystore.properties
+*.jks
+*.keystore
