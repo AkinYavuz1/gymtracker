@@ -2613,11 +2613,13 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(16px)", zIndex: 300, display: "flex", flexDirection: "column", justifyContent: "flex-end" }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", padding: "28px 24px 40px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "#111113", borderRadius: "26px 26px 0 0", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        {/* Sticky header */}
+        <div style={{ position: "sticky", top: 0, zIndex: 1, background: "#111113", borderRadius: "26px 26px 0 0", padding: "20px 24px 0", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.1)", margin: "0 auto" }} />
-          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.5)", borderRadius: 10, width: 32, height: 32, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>×</button>
+          <button onClick={onClose} style={{ background: "rgba(255,255,255,0.08)", border: "none", color: "rgba(255,255,255,0.6)", borderRadius: 10, width: 32, height: 32, fontSize: 20, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontWeight: 300 }}>×</button>
         </div>
+        <div style={{ overflowY: "auto", padding: "16px 24px 40px" }}>
 
         {/* Avatar */}
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
@@ -2791,6 +2793,7 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
         >
           Logout
         </button>
+        </div>{/* end scrollable */}
       </div>
     </div>
   );
