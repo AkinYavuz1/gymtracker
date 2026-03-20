@@ -123,7 +123,7 @@ function PricingScreen({ currentPlan, onSelect, onBack }) {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const plans = [
-    { id: "free", name: "Free", price: "$0", period: "forever", queries: "5/day", features: ["Workout tracking", "Exercise library", "Basic stats", "5 AI queries/day"], color: "rgba(255,255,255,0.4)", popular: false },
+    { id: "free", name: "Free", price: "$0", period: "forever", queries: "5/day", features: ["Workout tracking", "Exercise library", "Basic stats", "5 AI queries/day"], color: "#888", popular: false },
     { id: "pro", name: "Pro", price: "$4.99", period: "/month", queries: "30/day", features: ["Everything in Free", "30 AI queries/day", "Advanced analytics", "Export your data", "Priority support"], color: "#DFFF3C", popular: true },
     { id: "unlimited", name: "Unlimited", price: "$9.99", period: "/month", queries: "Unlimited", features: ["Everything in Pro", "Unlimited AI queries", "Custom templates", "Workout insights", "Early access features"], color: "#A47BFF", popular: false },
   ];
@@ -2673,7 +2673,7 @@ function ChangePasswordSection() {
   );
 }
 
-function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange, iconStyle, onIconStyleChange, onLegal, onDeleteAccount }) {
+function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications, onRedoOnboarding, activeTheme, onThemeChange, iconStyle, onIconStyleChange, onLegal, onDeleteAccount, onUpgrade }) {
   if (!user) return null;
 
   const accountAge = profile?.created_at
@@ -2720,6 +2720,9 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
                 <div style={{ width: 8, height: 8, borderRadius: 4, background: planData.color }} />
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", textTransform: "capitalize" }}>{plan}</div>
               </div>
+              {plan === "free" && (
+                <button onClick={() => { onClose(); onUpgrade && onUpgrade(); }} style={{ marginTop: 8, padding: "5px 10px", borderRadius: 8, border: "none", background: C.accent, color: C.bg, fontSize: 11, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>Upgrade →</button>
+              )}
             </div>
             <div>
               <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Member For</div>
@@ -4429,6 +4432,61 @@ export default function GAIns() {
     return () => { if (listener) listener.remove(); };
   }, []);
 
+  // Handle deep links — email confirmation, password reset, OAuth returns
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener = null;
+    (async () => {
+      const { App: CapApp } = await import("@capacitor/app");
+      listener = await CapApp.addListener("appUrlOpen", async ({ url }) => {
+        if (!url) return;
+        // Supabase puts tokens in the URL fragment or query string
+        // e.g. app.gainsai://auth/callback#access_token=...&type=signup
+        //      app.gainsai://auth/callback?token_hash=...&type=recovery
+        const urlObj = new URL(url);
+        const fragment = urlObj.hash ? new URLSearchParams(urlObj.hash.slice(1)) : null;
+        const query = urlObj.searchParams;
+
+        const accessToken = fragment?.get("access_token") || query.get("access_token");
+        const refreshToken = fragment?.get("refresh_token") || query.get("refresh_token");
+        const type = fragment?.get("type") || query.get("type");
+        const tokenHash = query.get("token_hash");
+
+        if (accessToken && refreshToken) {
+          // Email confirmation or OAuth — set the session directly
+          const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          if (!error) {
+            const prof = await getProfile();
+            if (prof) {
+              setProfile(prof);
+              if (prof.plan) setPlan(prof.plan);
+              refreshAppData();
+            }
+            if (type === "recovery") {
+              setScreen("resetPassword");
+            }
+          }
+        } else if (tokenHash && type === "recovery") {
+          // Password reset link
+          const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "recovery" });
+          if (!error) setScreen("resetPassword");
+        } else if (tokenHash) {
+          // Email confirmation via token hash
+          const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: "email" });
+          if (!error) {
+            const session = await getSession();
+            if (session?.user) {
+              setUser(session.user);
+              const prof = await getProfile();
+              if (prof) { setProfile(prof); if (prof.plan) setPlan(prof.plan); refreshAppData(); }
+            }
+          }
+        }
+      });
+    })();
+    return () => { if (listener) listener.remove(); };
+  }, []);
+
   const handleLogout = async () => {
     setUser(null);
     setProfile(null);
@@ -4814,6 +4872,10 @@ export default function GAIns() {
             setProfileModalOpen(false);
             setDeleteAccountModal(true);
             setDeleteConfirmText("");
+          }}
+          onUpgrade={() => {
+            setProfileModalOpen(false);
+            nav("pricing");
           }}
         />
       )}

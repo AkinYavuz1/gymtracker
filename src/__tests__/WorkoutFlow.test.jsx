@@ -23,6 +23,7 @@ vi.mock('../lib/supabase', () => ({
   updateProfile: vi.fn(),
   getTemplates: vi.fn().mockResolvedValue([]),
   getWorkouts: vi.fn().mockResolvedValue([]),
+  getWorkoutSets: vi.fn().mockResolvedValue([]),
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
@@ -134,7 +135,9 @@ describe('Workout Flow', () => {
 
     it('shows workout timer', async () => {
       await startWorkout();
-      expect(screen.getByText('00:00')).toBeInTheDocument();
+      // Two 00:00 elements exist: Workout Duration + Stopwatch
+      const timers = screen.getAllByText('00:00');
+      expect(timers.length).toBeGreaterThanOrEqual(1);
     });
 
     it('shows exercise list', async () => {
@@ -183,38 +186,28 @@ describe('Workout Flow', () => {
       expect(doneButtons.length).toBeGreaterThan(0);
     });
 
-    it('starts rest timer when set is completed', async () => {
+    it('marks set as done when circle is tapped', async () => {
       await startWorkout();
       const checkButtons = screen.getAllByText('○');
       fireEvent.click(checkButtons[0]);
 
-      // Rest timer should appear
-      await waitFor(() => {
-        expect(screen.getByText('Rest')).toBeInTheDocument();
-      });
+      // Set should now show a checkmark
+      const doneButtons = screen.getAllByText('✓');
+      expect(doneButtons.length).toBeGreaterThan(0);
     });
 
-    it('shows rest timer controls', async () => {
+    it('shows stopwatch widget', async () => {
       await startWorkout();
-      fireEvent.click(screen.getAllByText('○')[0]);
-
-      await waitFor(() => {
-        expect(screen.getByText('+30s')).toBeInTheDocument();
-        expect(screen.getByText('+60s')).toBeInTheDocument();
-        expect(screen.getByText('Skip')).toBeInTheDocument();
-      });
+      expect(screen.getByText('Stopwatch')).toBeInTheDocument();
+      expect(screen.getByText('Start')).toBeInTheDocument();
+      expect(screen.getByText('Reset')).toBeInTheDocument();
     });
 
-    it('skips rest timer', async () => {
+    it('stopwatch starts when Start is clicked', async () => {
       await startWorkout();
-      fireEvent.click(screen.getAllByText('○')[0]);
-
-      await waitFor(() => expect(screen.getByText('Skip')).toBeInTheDocument());
-      fireEvent.click(screen.getByText('Skip'));
-
-      await waitFor(() => {
-        expect(screen.queryByText('Rest')).not.toBeInTheDocument();
-      });
+      fireEvent.click(screen.getByText('Start'));
+      // After clicking Start it becomes Stop
+      await waitFor(() => expect(screen.getByText('Stop')).toBeInTheDocument());
     });
 
     it('can remove an exercise', async () => {
@@ -360,7 +353,7 @@ describe('Workout Flow', () => {
         await waitFor(() => {
           expect(screen.queryByText('Adjust future workouts?')).not.toBeInTheDocument();
         });
-        expect(reduceSetsFutureWorkouts).toHaveBeenCalledWith('sw-42');
+        expect(reduceSetsFutureWorkouts).toHaveBeenCalledWith('sw-42', expect.any(Array));
       });
 
       it('"No, keep as planned" closes modal without calling reduceSetsFutureWorkouts', async () => {

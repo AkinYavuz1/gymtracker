@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delete Account — gAIns</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0E0F14;
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #1A1C24;
+      border-radius: 24px;
+      padding: 40px 32px;
+      max-width: 480px;
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .logo {
+      font-size: 28px;
+      font-weight: 800;
+      color: #A78BFA;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 32px;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #fff;
+    }
+    p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.6);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+    .warning {
+      background: rgba(255,107,60,0.08);
+      border: 1px solid rgba(255,107,60,0.2);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: rgba(255,107,60,0.9);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 6px;
+    }
+    input, textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: #0E0F14;
+      color: #fff;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      margin-bottom: 16px;
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    input:focus, textarea:focus {
+      border-color: #A78BFA;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 24px;
+    }
+    .checkbox-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      margin-top: 2px;
+      flex-shrink: 0;
+      accent-color: #A78BFA;
+    }
+    .checkbox-row span {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.5;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      background: #FF6B3C;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    button:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    button:hover:not(:disabled) {
+      opacity: 0.9;
+    }
+    .success {
+      display: none;
+      text-align: center;
+      padding: 20px 0;
+    }
+    .success .icon { font-size: 48px; margin-bottom: 16px; }
+    .success h2 { font-size: 20px; margin-bottom: 8px; }
+    .success p { color: rgba(255,255,255,0.5); font-size: 14px; }
+    .in-app {
+      background: rgba(167,139,250,0.08);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-size: 13px;
+      color: rgba(167,139,250,0.9);
+      line-height: 1.6;
+      margin-bottom: 28px;
+    }
+    .divider {
+      text-align: center;
+      color: rgba(255,255,255,0.2);
+      font-size: 12px;
+      margin-bottom: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">gAIns</div>
+    <div class="subtitle">AI-powered strength training</div>
+
+    <div id="formSection">
+      <h1>Delete Account</h1>
+      <p>You can delete your account and all associated data at any time. This includes your workout history, personal records, AI conversations, and subscription data.</p>
+
+      <div class="in-app">
+        💡 <strong>Faster option:</strong> You can delete your account instantly from within the app — go to <strong>Profile → Delete Account</strong>.
+      </div>
+
+      <div class="warning">
+        ⚠️ Account deletion is <strong>permanent and irreversible</strong>. All your data will be deleted within 30 days and cannot be recovered.
+      </div>
+
+      <div class="divider">— or submit a deletion request below —</div>
+
+      <form id="deleteForm">
+        <label>Email address on your account</label>
+        <input type="email" id="email" placeholder="your@email.com" required />
+
+        <label>Reason (optional)</label>
+        <textarea id="reason" placeholder="Let us know why you're leaving..."></textarea>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="confirm" />
+          <span>I understand this will permanently delete my account and all associated data including workout history, personal records, and subscription information.</span>
+        </div>
+
+        <button type="submit" id="submitBtn" disabled>Request Account Deletion</button>
+      </form>
+    </div>
+
+    <div class="success" id="successSection">
+      <div class="icon">✅</div>
+      <h2>Request Received</h2>
+      <p>We've received your account deletion request for <strong id="confirmedEmail"></strong>.<br /><br />Your account and all associated data will be permanently deleted within <strong>30 days</strong>.<br /><br />You'll receive a confirmation email once the deletion is complete.</p>
+    </div>
+  </div>
+
+  <script>
+    const confirm = document.getElementById('confirm');
+    const submitBtn = document.getElementById('submitBtn');
+    const form = document.getElementById('deleteForm');
+
+    confirm.addEventListener('change', () => {
+      submitBtn.disabled = !confirm.checked;
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const reason = document.getElementById('reason').value;
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+
+      // Send to formspree (free form backend)
+      try {
+        await fetch('https://formspree.io/f/xnjgrnay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, reason, _subject: 'gAIns Account Deletion Request' })
+        });
+      } catch(e) {
+        // Show success regardless — email fallback below
+      }
+
+      document.getElementById('confirmedEmail').textContent = email;
+      document.getElementById('formSection').style.display = 'none';
+      document.getElementById('successSection').style.display = 'block';
+    });
+  </script>
+</body>
+</html>

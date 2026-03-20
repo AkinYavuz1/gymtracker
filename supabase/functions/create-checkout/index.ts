@@ -1,29 +1,46 @@
 // ============================================================
 // GAINS — Stripe Create Checkout Edge Function
-// ============================================================
-//
-// DEPLOY:
-//   1. supabase secrets set STRIPE_SECRET_KEY=sk_live_...
-//   2. supabase functions deploy create-checkout
-//
-// USAGE:
-//   POST /functions/v1/create-checkout
-//   Headers: Authorization: Bearer <user_access_token>
-//   Body: { "priceId": "price_xxx" }
-//
-//   Returns: { "url": "https://checkout.stripe.com/pay/cs_..." }
-//   Then open the URL with Capacitor Browser plugin.
-//
-// File: supabase/functions/create-checkout/index.ts
+// Uses direct Stripe REST API calls (no SDK) for Deno compatibility
 // ============================================================
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Stripe from "https://esm.sh/stripe@14?target=deno";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeaders } from "../_shared/cors.ts";
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY")!, {
-  apiVersion: "2024-12-18.acacia",
-});
+const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY")!;
+const STRIPE_API = "https://api.stripe.com/v1";
+
+function stripeHeaders() {
+  return {
+    "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
+    "Content-Type": "application/x-www-form-urlencoded",
+  };
+}
+
+function toFormData(obj: Record<string, string>): string {
+  return Object.entries(obj)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+}
+
+async function stripePost(path: string, params: Record<string, string>) {
+  const res = await fetch(`${STRIPE_API}${path}`, {
+    method: "POST",
+    headers: stripeHeaders(),
+    body: toFormData(params),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || "Stripe error");
+  return data;
+}
+
+async function stripeGet(path: string) {
+  const res = await fetch(`${STRIPE_API}${path}`, {
+    headers: stripeHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error?.message || "Stripe error");
+  return data;
+}
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -36,7 +53,6 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // Authenticate user
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Missing authorization" }), {
@@ -74,30 +90,29 @@ Deno.serve(async (req: Request) => {
     if (profile?.stripe_customer_id) {
       customerId = profile.stripe_customer_id;
     } else {
-      const customer = await stripe.customers.create({
-        email: profile?.email || user.email,
-        name: profile?.name || undefined,
-        metadata: { supabase_user_id: user.id },
+      const customer = await stripePost("/customers", {
+        email: profile?.email || user.email || "",
+        ...(profile?.name ? { name: profile.name } : {}),
+        "metadata[supabase_user_id]": user.id,
       });
       customerId = customer.id;
 
-      // Store customer ID in profile
       await supabase
         .from("profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", user.id);
     }
 
-    // Create Stripe Checkout Session
-    const session = await stripe.checkout.sessions.create({
+    // Create Checkout Session
+    const session = await stripePost("/checkout/sessions", {
       customer: customerId,
       mode: "subscription",
-      line_items: [{ price: priceId, quantity: 1 }],
-      // Deep link back into the app after checkout
-      success_url: "com.gains.app://checkout?status=success",
-      cancel_url: "com.gains.app://checkout?status=cancel",
-      allow_promotion_codes: true,
-      metadata: { supabase_user_id: user.id },
+      "line_items[0][price]": priceId,
+      "line_items[0][quantity]": "1",
+      success_url: "https://gains.app/success",
+      cancel_url: "https://gains.app/cancel",
+      allow_promotion_codes: "true",
+      "metadata[supabase_user_id]": user.id,
     });
 
     return new Response(JSON.stringify({ url: session.url }), {

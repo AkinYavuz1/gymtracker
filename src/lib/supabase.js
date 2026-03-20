@@ -878,8 +878,10 @@ export async function createCheckoutSession(priceId) {
   );
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Checkout failed');
+    const text = await response.text();
+    let msg = 'Checkout failed';
+    try { msg = JSON.parse(text).error || text; } catch { msg = text; }
+    throw new Error(`${response.status}: ${msg}`);
   }
 
   return await response.json(); // { url: "https://checkout.stripe.com/..." }

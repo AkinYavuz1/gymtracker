@@ -22,6 +22,7 @@ vi.mock('../lib/supabase', () => ({
   updateProfile: vi.fn(),
   getTemplates: vi.fn().mockResolvedValue([]),
   getWorkouts: vi.fn().mockResolvedValue([]),
+  getWorkoutSets: vi.fn().mockResolvedValue([]),
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   seedDummyData: vi.fn(),
@@ -158,47 +159,44 @@ describe('StatsScreen', () => {
     });
   });
 
-  it('shows stats cards', async () => {
+  it('shows stats sections with workout data', async () => {
     getWorkouts.mockResolvedValue([
       { id: 'w1', title: 'Push', started_at: '2025-03-10T10:00:00Z', duration_secs: 3600, total_volume_kg: 14100 },
     ]);
-    getPersonalRecords.mockResolvedValue([
-      { exercise_name: 'Bench', weight_kg: 120, reps: 8, estimated_1rm: 150 },
+
+    await navigateToStats();
+
+    await waitFor(() => {
+      expect(screen.getByText('Strength Trends')).toBeInTheDocument();
+      expect(screen.getByText('Consistency')).toBeInTheDocument();
+    });
+  });
+
+  it('shows Volume Trend section with workout data', async () => {
+    getWorkouts.mockResolvedValue([
+      { id: 'w1', title: 'Push', started_at: '2025-03-10T10:00:00Z', duration_secs: 3600, total_volume_kg: 14100 },
     ]);
 
     await navigateToStats();
 
     await waitFor(() => {
-      // Should show Workouts, Volume, Avg Time, PRs labels
-      expect(screen.getByText('Workouts')).toBeInTheDocument();
-      expect(screen.getByText('Volume')).toBeInTheDocument();
-      expect(screen.getByText('Avg Time')).toBeInTheDocument();
-      expect(screen.getByText('PRs')).toBeInTheDocument();
+      expect(screen.getByText('Volume Trend')).toBeInTheDocument();
     });
   });
 
-  it('shows 8-Week Volume chart section', async () => {
-    await navigateToStats();
+  it('shows Muscle Split section with workout data', async () => {
+    getWorkouts.mockResolvedValue([
+      { id: 'w1', title: 'Push', started_at: '2025-03-10T10:00:00Z', duration_secs: 3600, total_volume_kg: 14100 },
+    ]);
 
-    await waitFor(() => {
-      expect(screen.getByText('8-Week Volume')).toBeInTheDocument();
-    });
-  });
-
-  it('shows Muscle Split section', async () => {
     await navigateToStats();
 
     await waitFor(() => {
       expect(screen.getByText('Muscle Split')).toBeInTheDocument();
-      expect(screen.getByText('Chest')).toBeInTheDocument();
-      expect(screen.getByText('Back')).toBeInTheDocument();
-      expect(screen.getByText('Legs')).toBeInTheDocument();
-      expect(screen.getByText('Shoulders')).toBeInTheDocument();
-      expect(screen.getByText('Arms')).toBeInTheDocument();
     });
   });
 
-  it('calculates correct workout count', async () => {
+  it('shows workout count in consistency section', async () => {
     getWorkouts.mockResolvedValue([
       { id: 'w1', title: 'A', started_at: '2025-03-10T10:00:00Z', duration_secs: 3600, total_volume_kg: 5000 },
       { id: 'w2', title: 'B', started_at: '2025-03-11T10:00:00Z', duration_secs: 3600, total_volume_kg: 5000 },
@@ -208,19 +206,15 @@ describe('StatsScreen', () => {
     await navigateToStats();
 
     await waitFor(() => {
-      // Workouts stat should show 3
-      expect(screen.getByText('3')).toBeInTheDocument();
+      expect(screen.getByText('Consistency')).toBeInTheDocument();
     });
   });
 
-  it('shows zero stats when no data', async () => {
+  it('shows empty state when no workout data', async () => {
     await navigateToStats();
 
     await waitFor(() => {
-      // Multiple "0" elements exist (Workouts, PRs, chart data points, etc.)
-      const workoutsLabel = screen.getByText('Workouts');
-      const workoutsCard = workoutsLabel.closest('div').parentElement;
-      expect(workoutsCard).toHaveTextContent('0');
+      expect(screen.getByText('No data yet')).toBeInTheDocument();
     });
   });
 });

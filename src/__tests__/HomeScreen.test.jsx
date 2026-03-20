@@ -23,6 +23,7 @@ vi.mock('../lib/supabase', () => ({
   updateProfile: vi.fn(),
   getTemplates: vi.fn().mockResolvedValue([]),
   getWorkouts: vi.fn().mockResolvedValue([]),
+  getWorkoutSets: vi.fn().mockResolvedValue([]),
   getPersonalRecords: vi.fn().mockResolvedValue([]),
   getVolumeTrend: vi.fn().mockResolvedValue([]),
   getWeeklyStats: vi.fn().mockResolvedValue(null),
