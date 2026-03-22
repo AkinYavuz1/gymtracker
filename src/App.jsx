@@ -2296,6 +2296,15 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
           <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete a workout and it will appear here.</div>
         </div>
       )}
+      {exportOpen && (
+        <ExportModal
+          plan={plan}
+          workouts={workouts}
+          prs={prs}
+          onClose={() => setExportOpen(false)}
+          userName={userName}
+        />
+      )}
       {dayGroups.map((group, gi) => (
         <div key={gi} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: C.accent, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>{group.label}</div>
