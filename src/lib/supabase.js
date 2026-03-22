@@ -45,7 +45,9 @@ export async function signIn(email, password) {
 }
 
 export async function resetPassword(email) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email);
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: 'https://gainsai.uk/reset-password',
+  });
   return { error };
 }
 
@@ -168,6 +170,16 @@ export async function getWorkouts(limit = 10) {
   return data || [];
 }
 
+export async function getWorkoutsForExport(limit = 2000) {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('*')
+    .order('started_at', { ascending: false })
+    .limit(limit);
+  if (error) console.error('getWorkoutsForExport error:', error);
+  return data || [];
+}
+
 export async function deleteWorkout(workoutId, startedAt) {
   const session = await getSession();
   const userId = session?.user?.id;
@@ -223,6 +235,120 @@ export async function deleteWorkout(workoutId, startedAt) {
     .delete()
     .eq('id', workoutId);
   if (error) throw error;
+}
+
+export async function importWorkouts(workoutGroups) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  // Build set of existing workout keys (title::YYYY-MM-DD) for duplicate detection
+  const { data: existing } = await supabase
+    .from('workouts')
+    .select('title, started_at')
+    .eq('user_id', user.id);
+
+  const existingKeys = new Set(
+    (existing || []).map(w => `${w.title}::${w.started_at.slice(0, 10)}`)
+  );
+
+  let inserted = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const group of workoutGroups) {
+    const dayKey = `${group.title}::${group.startedAt.slice(0, 10)}`;
+    if (existingKeys.has(dayKey)) {
+      skipped++;
+      continue;
+    }
+
+    // Insert workout row
+    const { data: newWorkout, error: workoutErr } = await supabase
+      .from('workouts')
+      .insert({
+        user_id: user.id,
+        title: group.title,
+        started_at: group.startedAt,
+        finished_at: group.finishedAt,
+        duration_secs: group.durationSecs || null,
+        total_volume_kg: group.totalVolumeKg,
+        notes: null,
+      })
+      .select()
+      .single();
+
+    if (workoutErr || !newWorkout) {
+      errors.push(`${group.title} (${group.startedAt.slice(0, 10)}): ${workoutErr?.message || 'insert failed'}`);
+      continue;
+    }
+
+    // Insert sets in chunks to stay within payload limits
+    if (group.sets.length > 0) {
+      const setRows = group.sets.map(s => ({
+        workout_id: newWorkout.id,
+        exercise_name: s.exerciseName,
+        set_number: s.setNumber,
+        weight_kg: s.weightKg,
+        reps: s.reps,
+        completed: true,
+        rpe: s.rpe,
+      }));
+
+      for (let i = 0; i < setRows.length; i += 500) {
+        const chunk = setRows.slice(i, i + 500);
+        const { error: setsErr } = await supabase.from('workout_sets').insert(chunk);
+        if (setsErr) errors.push(`Sets for ${group.title}: ${setsErr.message}`);
+      }
+    }
+
+    // Backfill PRs — find best set per exercise by estimated 1RM and by volume
+    const byExercise = {};
+    for (const s of group.sets) {
+      if (!byExercise[s.exerciseName]) byExercise[s.exerciseName] = [];
+      byExercise[s.exerciseName].push(s);
+    }
+
+    const prRows = [];
+    for (const [exerciseName, sets] of Object.entries(byExercise)) {
+      const best1rm = sets.reduce((best, s) => {
+        const e1rm = s.weightKg * (1 + s.reps / 30);
+        const bestE1rm = best.weightKg * (1 + best.reps / 30);
+        return e1rm > bestE1rm ? s : best;
+      });
+      const bestVol = sets.reduce((best, s) =>
+        s.weightKg * s.reps > best.weightKg * best.reps ? s : best
+      );
+
+      prRows.push({
+        user_id: user.id,
+        exercise_name: exerciseName,
+        weight_kg: best1rm.weightKg,
+        reps: best1rm.reps,
+        pr_type: '1rm',
+        achieved_at: group.startedAt,
+        workout_id: newWorkout.id,
+        is_active: true,
+      });
+      prRows.push({
+        user_id: user.id,
+        exercise_name: exerciseName,
+        weight_kg: bestVol.weightKg,
+        reps: bestVol.reps,
+        pr_type: 'volume',
+        achieved_at: group.startedAt,
+        workout_id: newWorkout.id,
+        is_active: true,
+      });
+    }
+
+    if (prRows.length > 0) {
+      await supabase.from('personal_records').insert(prRows);
+    }
+
+    inserted++;
+  }
+
+  return { inserted, skipped, errors };
 }
 
 export async function getWorkoutSets(workoutIds) {
@@ -895,6 +1021,59 @@ export async function deleteUserAccount() {
   await supabase.auth.signOut();
 }
 
+// ─── Readiness Score helpers ─────────────────────────────────
+
+export async function saveReadinessScore(data) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data: result, error } = await supabase
+    .from('readiness_scores')
+    .upsert({
+      user_id: session.user.id,
+      score_date: data.score_date || new Date().toISOString().split('T')[0],
+      score: data.score,
+      sleep_hours: data.sleep_hours,
+      hrv_ms: data.hrv_ms || null,
+      avg_soreness: data.avg_soreness || null,
+      joint_comfort: data.joint_comfort || null,
+      dreading: data.dreading || false,
+      source: data.source || 'manual',
+    }, { onConflict: 'user_id,score_date' })
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
+export async function getReadinessScore(date) {
+  const session = await getSession();
+  if (!session?.user) return null;
+  const scoreDate = date || new Date().toISOString().split('T')[0];
+  const { data, error } = await supabase
+    .from('readiness_scores')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .eq('score_date', scoreDate)
+    .maybeSingle();
+  if (error) console.error('getReadinessScore error:', error);
+  return data;
+}
+
+export async function getReadinessHistory(days = 14) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const { data, error } = await supabase
+    .from('readiness_scores')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .gte('score_date', since.toISOString().split('T')[0])
+    .order('score_date', { ascending: false });
+  if (error) console.error('getReadinessHistory error:', error);
+  return data || [];
+}
+
 export async function getVolumeStandards(daysPerWeek) {
   const days = [3, 4, 5, 6].includes(daysPerWeek) ? daysPerWeek : 3;
   const { data, error } = await supabase
@@ -910,4 +1089,55 @@ export async function getVolumeStandards(daysPerWeek) {
     row.muscle_group,
     { mev_low: row.mev_low, mev_high: row.mev_high, mav_low: row.mav_low, mav_high: row.mav_high, mrv_low: row.mrv_low, mrv_high: row.mrv_high }
   ]));
+}
+
+// ─── Custom Exercises ────────────────────────────────────────
+
+export async function getCustomExercises() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return [];
+  const { data, error } = await supabase
+    .from('custom_exercises')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .order('created_at', { ascending: false });
+  if (error) { console.error('getCustomExercises error:', error); return []; }
+  return data || [];
+}
+
+export async function createCustomExercise(data) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const { data: result, error } = await supabase
+    .from('custom_exercises')
+    .insert({ ...data, user_id: session.user.id })
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
+export async function updateCustomExercise(id, data) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const { data: result, error } = await supabase
+    .from('custom_exercises')
+    .update(data)
+    .eq('id', id)
+    .eq('user_id', session.user.id)
+    .select()
+    .single();
+  if (error) throw error;
+  return result;
+}
+
+export async function deleteCustomExercise(id) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('custom_exercises')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', session.user.id);
+  if (error) throw error;
 }

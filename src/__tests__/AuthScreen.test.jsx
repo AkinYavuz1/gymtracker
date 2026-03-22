@@ -24,6 +24,10 @@ vi.mock('../lib/supabase', () => ({
   getScheduledWorkouts: vi.fn().mockResolvedValue([]),
   updateScheduledWorkout: vi.fn().mockResolvedValue({}),
   callCoachAPI: vi.fn(),
+  getCustomExercises: vi.fn().mockResolvedValue([]),
+  createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
+  updateCustomExercise: vi.fn().mockResolvedValue({}),
+  deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../lib/offlineStorage', () => ({

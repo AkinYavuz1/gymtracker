@@ -35,6 +35,18 @@ const NAME_MAP = {
   'arnold press':     'arnold press',
   'face pull':        'cable face pull',
   'lateral raise':    'cable lateral raise',
+  'hip thrust':       'barbell hip thrust',
+  'bulgarian split squat': 'dumbbell bulgarian split squat',
+  'calf raise':       'standing calf raise',
+  'cable curl':       'cable curl',
+  'overhead tricep ext': 'dumbbell one arm overhead extension',
+  'incline db press': 'dumbbell incline bench press',
+  'cable fly':        'cable crossover',
+  'push-ups':         'push-up',
+  'plank':            'plank',
+  'hanging leg raise':'hanging leg hip raise',
+  'ab wheel rollout': 'ab wheel roller',
+  'cable crunch':     'cable crunch',
 };
 
 function getCache() {

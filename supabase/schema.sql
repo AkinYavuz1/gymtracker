@@ -385,6 +385,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- ─── READINESS SCORES ────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.readiness_scores (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    score_date   DATE NOT NULL DEFAULT CURRENT_DATE,
+    score        SMALLINT NOT NULL CHECK (score BETWEEN 0 AND 100),
+    sleep_hours  DECIMAL(3,1),
+    hrv_ms       DECIMAL(5,1),
+    avg_soreness DECIMAL(3,1),
+    joint_comfort SMALLINT CHECK (joint_comfort BETWEEN 1 AND 5),
+    dreading     BOOLEAN DEFAULT false,
+    source       TEXT DEFAULT 'manual' CHECK (source IN ('healthkit','health_connect','manual')),
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(user_id, score_date)
+);
+
+ALTER TABLE public.readiness_scores ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users CRUD own readiness" ON public.readiness_scores FOR ALL USING (auth.uid() = user_id);
+
 -- Build AI context string from user data
 CREATE OR REPLACE FUNCTION public.build_ai_context(p_user_id UUID)
 RETURNS TEXT AS $$
@@ -393,11 +413,14 @@ DECLARE
     v_weekly JSON;
     v_prs TEXT;
     v_recent TEXT;
+    v_intensity TEXT;
+    v_readiness_score SMALLINT;
+    v_sleep DECIMAL;
     v_context TEXT;
 BEGIN
     SELECT * INTO v_profile FROM public.profiles WHERE id = p_user_id;
     v_weekly := public.get_weekly_stats(p_user_id);
-    
+
     -- Get top PRs (1RM and volume)
     SELECT string_agg(exercise_name || ' ' || weight_kg || 'kg x' || reps || ' (' || pr_type || ')', ', ')
     INTO v_prs
@@ -408,7 +431,7 @@ BEGIN
         ORDER BY exercise_name, pr_type, estimated_1rm DESC
         LIMIT 10
     ) sub;
-    
+
     -- Get recent workouts
     SELECT string_agg(
         title || ' ' || to_char(started_at, 'Mon DD') || ' ' ||
@@ -423,7 +446,22 @@ BEGIN
         ORDER BY started_at DESC
         LIMIT 5
     ) sub;
-    
+
+    -- Get avg intensity (as RIR) per exercise from last 14 days
+    SELECT string_agg(exercise_name || ' avg RIR ' || avg_rir::TEXT, ', ')
+    INTO v_intensity
+    FROM (
+        SELECT ws.exercise_name, ROUND((10 - AVG(ws.rpe))::NUMERIC, 1) AS avg_rir
+        FROM public.workout_sets ws
+        JOIN public.workouts w ON w.id = ws.workout_id
+        WHERE w.user_id = p_user_id
+          AND ws.rpe IS NOT NULL
+          AND w.started_at >= NOW() - INTERVAL '14 days'
+        GROUP BY ws.exercise_name
+        ORDER BY AVG(ws.rpe) DESC
+        LIMIT 8
+    ) sub;
+
     v_context := COALESCE(v_profile.name, 'Athlete')
         || ' | ' || COALESCE(v_profile.weight_kg::TEXT || 'kg', 'weight unknown')
         || ' | ' || COALESCE(v_profile.height_cm::TEXT || 'cm', '')
@@ -431,8 +469,22 @@ BEGIN
         || ' | Goal: ' || COALESCE(v_profile.training_goal, 'general')
         || E'\nPRs: ' || COALESCE(v_prs, 'none yet')
         || E'\nWeek: ' || COALESCE(v_weekly::TEXT, '{}')
-        || E'\nRecent: ' || COALESCE(v_recent, 'no workouts yet');
-    
+        || E'\nRecent: ' || COALESCE(v_recent, 'no workouts yet')
+        || CASE WHEN v_intensity IS NOT NULL THEN E'\nIntensity: ' || v_intensity ELSE '' END;
+
+    -- Readiness
+    SELECT score, sleep_hours INTO v_readiness_score, v_sleep
+    FROM public.readiness_scores
+    WHERE user_id = p_user_id AND score_date = CURRENT_DATE
+    LIMIT 1;
+
+    v_context := v_context
+        || CASE WHEN v_readiness_score IS NOT NULL THEN
+            E'\nReadiness: ' || v_readiness_score || '/100'
+            || COALESCE(' · Sleep ' || v_sleep || 'h', '')
+            || CASE WHEN v_readiness_score < 40 THEN ' · LOW READINESS — suggest deload version of workout' ELSE '' END
+           ELSE '' END;
+
     RETURN v_context;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -1016,3 +1068,24 @@ BEGIN
   DELETE FROM auth.users WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ─── CUSTOM EXERCISES ────────────────────────────────────────
+
+CREATE TABLE public.custom_exercises (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  name TEXT NOT NULL,
+  muscle_group TEXT NOT NULL,
+  equipment TEXT NOT NULL DEFAULT 'Bodyweight',
+  difficulty TEXT NOT NULL DEFAULT 'Intermediate'
+    CHECK (difficulty IN ('Beginner', 'Intermediate', 'Advanced')),
+  notes TEXT,
+  icon TEXT DEFAULT '🏋️',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.custom_exercises ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can CRUD own custom exercises"
+  ON public.custom_exercises FOR ALL
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+CREATE INDEX idx_custom_exercises_user ON public.custom_exercises (user_id);
