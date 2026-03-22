@@ -105,8 +105,16 @@ export async function callCoachAPI(prompt, label, conversationId) {
   );
 
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || 'Coach API failed');
+    let errMsg = `Coach API error (${response.status})`;
+    try {
+      const err = await response.json();
+      errMsg = err.error || errMsg;
+      console.error('Coach API error response:', response.status, err);
+    } catch {
+      // Response body wasn't JSON (e.g. HTML error page) — keep status-based message
+      console.error('Coach API error (non-JSON):', response.status, response.statusText);
+    }
+    throw new Error(errMsg);
   }
 
   return await response.json();
