@@ -98,7 +98,6 @@ export async function callCoachAPI(prompt, label, conversationId) {
     const { data: refreshed } = await supabase.auth.refreshSession();
     if (refreshed.session) session = refreshed.session;
   }
-  console.log('Coach API: access_token prefix:', session.access_token?.slice(0, 20));
 
   const response = await fetch(
     `${supabaseUrl}/functions/v1/coach`,
@@ -107,7 +106,6 @@ export async function callCoachAPI(prompt, label, conversationId) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
-        'apikey': supabaseAnonKey,
       },
       body: JSON.stringify({ prompt, label, conversationId }),
     }
