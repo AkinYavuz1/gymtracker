@@ -64,10 +64,6 @@ Deno.serve(async (req: Request) => {
     }
 
     // 3. Check AI quota (uses the DB function we created)
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
 
     const { data: quota, error: quotaError } = await supabaseAdmin.rpc("check_ai_quota", {
       p_user_id: user.id,
