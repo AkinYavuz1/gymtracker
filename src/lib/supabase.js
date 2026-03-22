@@ -89,9 +89,16 @@ export async function signInWithGoogle() {
 // ─── AI Coach API call ──────────────────────────────────────
 
 export async function callCoachAPI(prompt, label, conversationId) {
-  // Refresh session to ensure we have a valid, non-expired JWT
-  const { data: { session } } = await supabase.auth.refreshSession();
+  // Get current session, refresh if needed
+  let { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
+  // If token expires within 60s, force a refresh
+  const expiresAt = session.expires_at ?? 0;
+  if (expiresAt - Math.floor(Date.now() / 1000) < 60) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    if (refreshed.session) session = refreshed.session;
+  }
+  console.log('Coach API: access_token prefix:', session.access_token?.slice(0, 20));
 
   const response = await fetch(
     `${supabaseUrl}/functions/v1/coach`,
@@ -100,6 +107,7 @@ export async function callCoachAPI(prompt, label, conversationId) {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
+        'apikey': supabaseAnonKey,
       },
       body: JSON.stringify({ prompt, label, conversationId }),
     }
