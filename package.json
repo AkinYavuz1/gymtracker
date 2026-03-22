@@ -21,7 +21,10 @@
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/push-notifications": "^8.0.2",
+    "@nicenicer/capacitor-health-connect": "^0.1.0",
+    "capacitor-apple-health": "^0.2.0",
     "@supabase/supabase-js": "^2.45.0",
+    "jspdf": "^4.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

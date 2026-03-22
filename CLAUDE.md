@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+> **Always read `FILEMAP.md` first before any task** — it lists every file with line counts and section anchors so you can jump directly to the relevant code without loading unnecessary files.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Quick Commands
@@ -31,9 +33,11 @@ npm run setup            # Show setup instructions
 ### Backend (Supabase)
 - **Database**: PostgreSQL with RLS (Row Level Security) policies
 - **Auth**: Built-in email/Google/Apple auth via Supabase
-- **Edge Functions**: Two Deno functions deployed via Supabase CLI:
-  - `coach/index.ts` (219 lines): AI Coach endpoint using Claude Haiku with prompt caching
-  - `stripe-webhook/index.ts` (137 lines): Subscription webhook handler
+- **Edge Functions**: Four Deno functions deployed via Supabase CLI:
+  - `coach/index.ts` (257 lines): AI Coach endpoint using Claude Haiku with prompt caching
+  - `stripe-webhook/index.ts` (126 lines): Subscription webhook handler
+  - `create-checkout/index.ts` (128 lines): Creates Stripe checkout sessions
+  - `send-notification/index.ts` (411 lines): Push notifications via APNs/FCM
 - **Shared**: `_shared/cors.ts` for CORS headers
 
 ### AI Integration
@@ -148,7 +152,22 @@ supabase functions deploy stripe-webhook
 
 ## Testing
 
-No formal test suite configured. For manual testing:
+The project uses Vitest with 400+ tests. Follow these rules for all tasks:
+
+1. **During development**: Only run the specific test file(s) for the code being changed. Use targeted commands:
+   ```bash
+   npx vitest run src/lib/__tests__/healthData.test.js
+   npx vitest run src/__tests__/ProfileModal.test.jsx
+   ```
+   Do NOT run the full suite during iterative development — it wastes time and tokens.
+
+2. **Before committing**: Run the full suite once with `npx vitest run` to catch indirect regressions.
+
+3. **Verbose output**: Default to minimal output. Only add `--reporter=verbose` when a test fails and you need more detail to diagnose it.
+
+4. **Missing test files**: If no test file exists for the code being changed, create one before running tests. Tests are a required part of feature delivery, not a separate task.
+
+### Manual testing
 - Run `npm run dev` and test UI flows locally
 - Check Edge Function logs: Supabase Dashboard → Edge Functions → Logs
 - Use browser DevTools to debug API responses
@@ -170,9 +189,7 @@ Capacitor 8 requires Java 21 but system has Java 17. Fix by patching these two f
 
 ## File Size Reference
 
-- `src/App.jsx`: ~90 KB / ~1286 lines (large monolith; consider splitting if adding major features)
-- `src/lib/supabase.js`: 294 lines
-- `src/lib/exerciseGifs.js`: 93 lines
-- `src/lib/offlineStorage.js`: 87 lines
-- `supabase/functions/coach/index.ts`: 219 lines
-- `supabase/schema.sql`: 429 lines
+See `FILEMAP.md` for current line counts. Key files:
+- `src/App.jsx`: ~4957 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
+- `src/lib/supabase.js`: 915 lines
+- `supabase/schema.sql`: 1018 lines

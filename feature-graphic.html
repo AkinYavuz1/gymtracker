@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 1024px; height: 500px; overflow: hidden; background: #0E0F14; }
+    .graphic {
+      width: 1024px;
+      height: 500px;
+      background: #0E0F14;
+      position: relative;
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* Background glow blobs */
+    .blob1 {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(167,139,250,0.15) 0%, transparent 70%);
+      top: -150px;
+      right: -100px;
+    }
+    .blob2 {
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(167,139,250,0.08) 0%, transparent 70%);
+      bottom: -100px;
+      left: 200px;
+    }
+
+    /* Left side — branding */
+    .left {
+      padding-left: 72px;
+      flex: 1;
+      z-index: 2;
+    }
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .logo-icon {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #A78BFA 0%, #7C3AED 100%);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      box-shadow: 0 8px 32px rgba(167,139,250,0.4);
+    }
+    .logo-text {
+      font-size: 52px;
+      font-weight: 900;
+      color: #A78BFA;
+      letter-spacing: -1px;
+    }
+    .tagline {
+      font-size: 22px;
+      color: rgba(255,255,255,0.9);
+      font-weight: 600;
+      margin-bottom: 10px;
+      letter-spacing: -0.3px;
+    }
+    .sub-tagline {
+      font-size: 15px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 36px;
+      line-height: 1.5;
+    }
+
+    /* Feature pills */
+    .pills {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(167,139,250,0.1);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: 100px;
+      padding: 8px 18px;
+      width: fit-content;
+    }
+    .pill-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #A78BFA;
+      flex-shrink: 0;
+    }
+    .pill span {
+      font-size: 13px;
+      color: rgba(255,255,255,0.75);
+      font-weight: 500;
+    }
+
+    /* Right side — mock phone screen */
+    .right {
+      width: 320px;
+      flex-shrink: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding-right: 48px;
+      z-index: 2;
+    }
+    .phone {
+      width: 220px;
+      height: 420px;
+      background: #1A1C24;
+      border-radius: 36px;
+      border: 2px solid rgba(255,255,255,0.1);
+      overflow: hidden;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05);
+      position: relative;
+    }
+    .phone-notch {
+      width: 80px;
+      height: 22px;
+      background: #0E0F14;
+      border-radius: 0 0 14px 14px;
+      margin: 0 auto;
+    }
+    .phone-content {
+      padding: 10px 16px 16px;
+    }
+    .phone-header {
+      font-size: 11px;
+      font-weight: 800;
+      color: #A78BFA;
+      margin-bottom: 8px;
+    }
+
+    /* Mini stat cards */
+    .mini-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .mini-card {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .mini-card-label {
+      font-size: 8px;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+    .mini-card-value {
+      font-size: 14px;
+      font-weight: 800;
+      color: #fff;
+    }
+    .mini-card-sub {
+      font-size: 8px;
+      color: rgba(255,255,255,0.3);
+    }
+
+    /* AI chat bubble */
+    .ai-bubble {
+      background: rgba(167,139,250,0.12);
+      border: 1px solid rgba(167,139,250,0.2);
+      border-radius: 12px 12px 12px 3px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .ai-bubble-label {
+      font-size: 7px;
+      color: #A78BFA;
+      font-weight: 700;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .ai-bubble-text {
+      font-size: 8.5px;
+      color: rgba(255,255,255,0.7);
+      line-height: 1.5;
+    }
+
+    /* Progress bar */
+    .progress-section {
+      margin-top: 8px;
+    }
+    .progress-label {
+      font-size: 8px;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 4px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .progress-bar {
+      height: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px;
+      margin-bottom: 6px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7C3AED, #A78BFA);
+      border-radius: 2px;
+    }
+
+    /* Bottom nav */
+    .phone-nav {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: #1A1C24;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0 8px;
+    }
+    .nav-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .nav-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.06);
+    }
+    .nav-dot.active {
+      background: rgba(167,139,250,0.25);
+    }
+    .nav-label {
+      font-size: 6px;
+      color: rgba(255,255,255,0.2);
+    }
+    .nav-label.active {
+      color: #A78BFA;
+    }
+
+    /* Decorative grid lines */
+    .grid-lines {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image:
+        linear-gradient(rgba(167,139,250,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(167,139,250,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="graphic">
+    <div class="grid-lines"></div>
+    <div class="blob1"></div>
+    <div class="blob2"></div>
+
+    <!-- Left: Branding & Features -->
+    <div class="left">
+      <div class="logo-row">
+        <div class="logo-icon">💪</div>
+        <div class="logo-text">gAIns</div>
+      </div>
+      <div class="tagline">Your AI-Powered<br>Strength Coach</div>
+      <div class="sub-tagline">Track workouts. Break records.<br>Get smarter with every rep.</div>
+      <div class="pills">
+        <div class="pill"><div class="pill-dot"></div><span>AI coaching powered by Claude</span></div>
+        <div class="pill"><div class="pill-dot"></div><span>Automatic personal record tracking</span></div>
+        <div class="pill"><div class="pill-dot"></div><span>Works offline — syncs when back online</span></div>
+      </div>
+    </div>
+
+    <!-- Right: Phone mockup -->
+    <div class="right">
+      <div class="phone">
+        <div class="phone-notch"></div>
+        <div class="phone-content">
+          <div class="phone-header">gAIns</div>
+
+          <div class="mini-cards">
+            <div class="mini-card">
+              <div class="mini-card-label">Bench Press PR</div>
+              <div class="mini-card-value">102.5<span style="font-size:9px;font-weight:500;color:rgba(255,255,255,0.4)">kg</span></div>
+              <div class="mini-card-sub">↑ 5kg this month</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-label">This Week</div>
+              <div class="mini-card-value">4<span style="font-size:9px;font-weight:500;color:rgba(255,255,255,0.4)"> sets</span></div>
+              <div class="mini-card-sub">3 workouts</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-label">Squat PR</div>
+              <div class="mini-card-value">140<span style="font-size:9px;font-weight:500;color:rgba(255,255,255,0.4)">kg</span></div>
+              <div class="mini-card-sub">↑ 7.5kg this month</div>
+            </div>
+            <div class="mini-card">
+              <div class="mini-card-label">Est. 1RM</div>
+              <div class="mini-card-value">158<span style="font-size:9px;font-weight:500;color:rgba(255,255,255,0.4)">kg</span></div>
+              <div class="mini-card-sub">Epley formula</div>
+            </div>
+          </div>
+
+          <div class="ai-bubble">
+            <div class="ai-bubble-label">✦ AI Coach</div>
+            <div class="ai-bubble-text">Great week — your squat volume is up 18%. Consider adding a deload next week to lock in those gains.</div>
+          </div>
+
+          <div class="progress-section">
+            <div class="progress-label">
+              <span>Weekly goal</span>
+              <span style="color:rgba(255,255,255,0.6)">4 / 5</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:80%"></div></div>
+            <div class="progress-label">
+              <span>AI queries today</span>
+              <span style="color:rgba(255,255,255,0.6)">12 / 30</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:40%"></div></div>
+          </div>
+        </div>
+
+        <div class="phone-nav">
+          <div class="nav-item">
+            <div class="nav-dot active"></div>
+            <div class="nav-label active">Home</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-dot"></div>
+            <div class="nav-label">Workout</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-dot"></div>
+            <div class="nav-label">Coach</div>
+          </div>
+          <div class="nav-item">
+            <div class="nav-dot"></div>
+            <div class="nav-label">Profile</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

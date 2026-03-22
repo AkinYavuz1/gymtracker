@@ -67,6 +67,17 @@ export function getMuscleGroup(exerciseName) {
 }
 
 /**
+ * Return all exercise names that target the same muscle group as the given exercise.
+ */
+export function getExercisesForMuscle(exerciseName) {
+  const group = EXERCISE_MUSCLE_MAP[exerciseName];
+  if (!group) return [];
+  return Object.entries(EXERCISE_MUSCLE_MAP)
+    .filter(([name, g]) => g === group && name !== exerciseName)
+    .map(([name]) => name);
+}
+
+/**
  * Determine the volume zone label for a given set count relative to standards.
  * Returns: "MEV" | "MAV" | "MRV" | null
  */

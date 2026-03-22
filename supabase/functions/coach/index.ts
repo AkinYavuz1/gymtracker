@@ -143,6 +143,8 @@ Deno.serve(async (req: Request) => {
 
     const systemPrompt = `You are a concise elite AI strength coach inside a gym app. You have the user's real training data below. Be direct, specific, actionable. Use numbers when possible. Under 150 words. Short paragraphs only, no markdown, no bullet points, no headers.
 
+If the user's readiness score is below 40, proactively suggest a deload version: reduce weight by 20-30%, drop 1-2 sets, or swap for lighter variations. Explain why recovery matters today.
+
 USER DATA:
 ${userContext || "New user — no workout data yet. Give general advice and encourage them to start tracking."}${volumeContext}`;
 
