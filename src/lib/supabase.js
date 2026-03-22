@@ -89,7 +89,8 @@ export async function signInWithGoogle() {
 // ─── AI Coach API call ──────────────────────────────────────
 
 export async function callCoachAPI(prompt, label, conversationId) {
-  const session = await getSession();
+  // Refresh session to ensure we have a valid, non-expired JWT
+  const { data: { session } } = await supabase.auth.refreshSession();
   if (!session) throw new Error('Not authenticated');
 
   const response = await fetch(
