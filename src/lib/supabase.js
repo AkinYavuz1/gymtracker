@@ -77,6 +77,36 @@ export async function getUser() {
 }
 
 export async function signInWithGoogle() {
+  // Native Android/iOS: use Capacitor Google Auth plugin for native account picker
+  try {
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor.isNativePlatform()) {
+      const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth');
+      await GoogleAuth.initialize();
+      const googleUser = await GoogleAuth.signIn();
+      const idToken = googleUser?.authentication?.idToken;
+      if (!idToken) {
+        return { data: null, error: { message: 'No ID token received from Google' } };
+      }
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken,
+      });
+      return { data, error };
+    }
+  } catch (e) {
+    // If user cancelled the native sign-in, return a soft error
+    if (e?.message?.includes('cancel') || e?.message?.includes('Cancel') ||
+        e?.code === 'SIGN_IN_CANCELLED' || e?.code === '12501') {
+      return { data: null, error: null };
+    }
+    // If Capacitor import fails (web dev), fall through to OAuth
+    if (!e?.message?.includes('import') && !e?.message?.includes('module')) {
+      return { data: null, error: { message: e.message || 'Google sign-in failed' } };
+    }
+  }
+
+  // Web fallback: browser-based OAuth redirect
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {

@@ -125,7 +125,7 @@ describe('supabase.js', () => {
       expect(user).toEqual({ id: 'user-1' });
     });
 
-    it('signInWithGoogle calls signInWithOAuth', async () => {
+    it('signInWithGoogle falls back to signInWithOAuth on web', async () => {
       mockAuth.signInWithOAuth.mockResolvedValue({ data: {}, error: null });
       const result = await signInWithGoogle();
       expect(mockAuth.signInWithOAuth).toHaveBeenCalledWith({

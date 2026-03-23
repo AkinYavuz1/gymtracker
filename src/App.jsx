@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
-import { signUp, signIn, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getWorkoutsForExport, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from "./lib/supabase";
+import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getWorkoutsForExport, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from "./lib/supabase";
 import { detectFormat, parseCSV } from "./lib/importParser";
 import { calculateReadinessScore } from "./lib/readinessScore";
 import { isHealthAvailable, requestHealthPermissions, fetchSleepData, fetchHRVData } from "./lib/healthData";
@@ -1175,17 +1175,31 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
 
 // === SECTION: Auth ===
 /* ═══ AUTH ═══ */
-function AuthScreen({ onSignUp, onSignIn, onLegal }) {
+function AuthScreen({ onSignUp, onSignIn, onGoogleSignIn, onLegal }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
   const [resetSent, setResetSent] = useState(false);
   const [showPw, setShowPw] = useState(false);
 
   const switchMode = (m) => { setMode(m); setError(""); setResetSent(false); setShowPw(false); };
+
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setGoogleLoading(true);
+    try {
+      const result = await signInWithGoogle();
+      if (result?.error) setError(result.error.message || "Google sign-in failed");
+      else if (result?.data && onGoogleSignIn) setTimeout(onGoogleSignIn, 500);
+    } catch (e) {
+      setError(e.message);
+    }
+    setGoogleLoading(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -1250,6 +1264,19 @@ function AuthScreen({ onSignUp, onSignIn, onLegal }) {
               {loading ? "..." : mode === "login" ? "Sign In" : mode === "signup" ? "Sign Up" : "Send Reset Link"}
             </button>
           </form>
+          {mode !== "forgot" && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "20px 0" }}>
+                <div style={{ flex: 1, height: 1, background: C.border }} />
+                <span style={{ fontSize: 11, color: C.dim, fontFamily: C.font }}>or</span>
+                <div style={{ flex: 1, height: 1, background: C.border }} />
+              </div>
+              <button onClick={handleGoogleSignIn} disabled={googleLoading || loading} style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: C.font, cursor: googleLoading ? "wait" : "pointer", opacity: googleLoading ? 0.6 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.28-3.14.76-4.59l-7.98-6.19A23.9 23.9 0 0 0 0 24c0 3.77.9 7.34 2.44 10.5l8.09-5.91z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                {googleLoading ? "..." : "Continue with Google"}
+              </button>
+            </>
+          )}
           <div style={{ fontSize: 12, color: C.dim, marginTop: 24 }}>
             {mode === "forgot" ? "Remembered it? " : mode === "login" ? "No account? " : "Have an account? "}
             <button onClick={() => switchMode(mode === "signup" ? "login" : mode === "forgot" ? "login" : "signup")} style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: C.font, textDecoration: "underline" }}>
@@ -2197,9 +2224,11 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
 async function triggerDownload(content, filename, mimeType) {
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const { Share } = await import("@capacitor/share");
     const base64 = btoa(unescape(encodeURIComponent(content)));
-    await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Documents, recursive: true });
-    return `Saved to Documents/${filename}`;
+    const result = await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Cache });
+    await Share.share({ title: filename, url: result.uri, dialogTitle: "Save file" });
+    return `Exported ${filename}`;
   }
   // Desktop / web browser — standard download
   const blob = new Blob([content], { type: mimeType });
@@ -2374,9 +2403,11 @@ async function generatePDF(workouts, sets, prs, dateRangeLabel, userName) {
 
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const { Share } = await import("@capacitor/share");
     const base64 = doc.output("datauristring").split(",")[1];
-    await Filesystem.writeFile({ path: "gains-report.pdf", data: base64, directory: Directory.Documents, recursive: true });
-    return "Saved to Documents/gains-report.pdf";
+    const result = await Filesystem.writeFile({ path: "gains-report.pdf", data: base64, directory: Directory.Cache });
+    await Share.share({ title: "gAIns Training Report", url: result.uri, dialogTitle: "Save file" });
+    return "Exported gains-report.pdf";
   }
   doc.save("gains-report.pdf");
 }
@@ -2439,7 +2470,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
       }
       if (msg) { setSuccess(msg); } else { onClose(); }
     } catch (e) {
-      console.error("Export error:", e); setError("Export failed. Please try again.");
+      console.error("Export error:", e); setError(`Export failed: ${e?.message || e}`);
     } finally {
       setLoading(false);
     }
@@ -6162,7 +6193,7 @@ export default function GAIns() {
         {legalScreen ? (
           <LegalScreen onBack={() => setLegalScreen(null)} initialTab={legalScreen} />
         ) : (
-          <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} onLegal={(tab) => setLegalScreen(tab)} />
+          <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} onGoogleSignIn={refreshAuth} onLegal={(tab) => setLegalScreen(tab)} />
         )}
       </div>
     );

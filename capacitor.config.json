@@ -1,5 +1,14 @@
 {
   "appId": "app.gainsai",
   "appName": "gAIns",
-  "webDir": "dist"
+  "webDir": "dist",
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "clientId": "187737518143-d0oi9js0ej0oq96abpl5qtqm25lgd96e.apps.googleusercontent.com",
+      "androidClientId": "187737518143-d0oi9js0ej0oq96abpl5qtqm25lgd96e.apps.googleusercontent.com",
+      "serverClientId": "187737518143-d0oi9js0ej0oq96abpl5qtqm25lgd96e.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false
+    }
+  }
 }

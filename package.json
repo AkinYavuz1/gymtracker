@@ -23,7 +23,9 @@
     "@capacitor/filesystem": "^8.1.2",
     "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.1",
+    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "@supabase/supabase-js": "^2.45.0",
+    "@testing-library/dom": "^10.4.1",
     "jspdf": "^4.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
@@ -37,6 +39,7 @@
     "autoprefixer": "^10.4.19",
     "jsdom": "^29.0.0",
     "postcss": "^8.4.39",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.6",
     "vite": "^5.3.4",
     "vitest": "^4.1.0"

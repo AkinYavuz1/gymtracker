@@ -10,6 +10,7 @@ vi.mock('../lib/supabase', () => ({
   },
   signUp: vi.fn(),
   signIn: vi.fn(),
+  signInWithGoogle: vi.fn(),
   signOut: vi.fn(),
   getSession: vi.fn().mockResolvedValue(null),
   getProfile: vi.fn().mockResolvedValue(null),
@@ -41,7 +42,7 @@ vi.mock('../lib/exerciseGifs', () => ({
 }));
 
 import App from '../App';
-import { signUp, signIn, getSession } from '../lib/supabase';
+import { signUp, signIn, signInWithGoogle, getSession } from '../lib/supabase';
 
 describe('AuthScreen', () => {
   beforeEach(() => {
@@ -210,6 +211,61 @@ describe('AuthScreen', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText('AI-powered strength training')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Continue with Google button on login screen', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+    });
+  });
+
+  it('renders Continue with Google button on signup screen', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('Sign Up')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Sign Up'));
+    expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+  });
+
+  it('does not render Google button in forgot password mode', async () => {
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('Forgot password?')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText('Forgot password?'));
+    expect(screen.queryByText('Continue with Google')).not.toBeInTheDocument();
+  });
+
+  it('calls signInWithGoogle when Google button is clicked', async () => {
+    signInWithGoogle.mockResolvedValue({ data: {}, error: null });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Continue with Google'));
+
+    await waitFor(() => {
+      expect(signInWithGoogle).toHaveBeenCalled();
+    });
+  });
+
+  it('shows error when Google sign-in fails', async () => {
+    signInWithGoogle.mockResolvedValue({ error: { message: 'Google auth failed' } });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByText('Continue with Google')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Continue with Google'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Google auth failed')).toBeInTheDocument();
     });
   });
 });
