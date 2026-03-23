@@ -20,6 +20,7 @@ const { mockAuth, mockQueryBuilder, mockClient } = vi.hoisted(() => {
     getSession: vi.fn(),
     getUser: vi.fn(),
     signInWithOAuth: vi.fn(),
+    refreshSession: vi.fn().mockResolvedValue({ data: { session: null } }),
     onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }),
   };
 
@@ -272,9 +273,10 @@ describe('supabase.js', () => {
     it('throws generic error when no error field', async () => {
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
         ok: false,
+        status: 500,
         json: () => Promise.resolve({}),
       });
-      await expect(callCoachAPI('test', 'test')).rejects.toThrow('Coach API failed');
+      await expect(callCoachAPI('test', 'test')).rejects.toThrow('Coach API error (500)');
     });
   });
 

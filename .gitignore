@@ -10,3 +10,5 @@ android/app/src/main/assets/
 android/keystore.properties
 *.jks
 *.keystore
+supabase.exe
+supabase/.temp/

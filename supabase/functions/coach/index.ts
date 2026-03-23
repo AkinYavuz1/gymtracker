@@ -55,7 +55,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // 2. Parse request
-    const { prompt, label, conversationId } = await req.json();
+    const { prompt, label, conversationId, max_tokens: requestedMaxTokens } = await req.json();
     if (!prompt) {
       return new Response(
         JSON.stringify({ error: "Missing prompt" }),
@@ -139,10 +139,11 @@ Deno.serve(async (req: Request) => {
       // Volume context is optional — don't fail if it errors
     }
 
+    const isGeneration = label?.startsWith("Generate");
     const systemPrompt = `You are a concise elite AI strength coach inside a gym app. You have the user's real training data below. Be direct, specific, actionable. Use numbers when possible. Under 150 words. Short paragraphs only, no markdown, no bullet points, no headers.
 
 If the user's readiness score is below 40, proactively suggest a deload version: reduce weight by 20-30%, drop 1-2 sets, or swap for lighter variations. Explain why recovery matters today.
-
+${isGeneration ? "\nIMPORTANT: Return ONLY valid JSON matching the schema in the user message. No explanation, no markdown fences, no other text — just the raw JSON object." : ""}
 USER DATA:
 ${userContext || "New user — no workout data yet. Give general advice and encourage them to start tracking."}${volumeContext}`;
 
@@ -155,7 +156,7 @@ ${userContext || "New user — no workout data yet. Give general advice and enco
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
+        max_tokens: Math.min(requestedMaxTokens || 600, 2000),
         system: [
           {
             type: "text",

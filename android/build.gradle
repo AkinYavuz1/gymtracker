@@ -35,6 +35,12 @@ subprojects {
                 }
             }
         }
+        // Override Kotlin jvmToolchain for plugins that set it to 21
+        try {
+            project.kotlin {
+                jvmToolchain(17)
+            }
+        } catch (Exception ignored) {}
     }
 }
 

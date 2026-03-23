@@ -88,7 +88,7 @@ export async function signInWithGoogle() {
 
 // ─── AI Coach API call ──────────────────────────────────────
 
-export async function callCoachAPI(prompt, label, conversationId) {
+export async function callCoachAPI(prompt, label, conversationId, options = {}) {
   // Get current session, refresh if needed
   let { data: { session } } = await supabase.auth.getSession();
   if (!session) throw new Error('Not authenticated');
@@ -107,7 +107,7 @@ export async function callCoachAPI(prompt, label, conversationId) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ prompt, label, conversationId }),
+      body: JSON.stringify({ prompt, label, conversationId, ...(options.max_tokens ? { max_tokens: options.max_tokens } : {}) }),
     }
   );
 

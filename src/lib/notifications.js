@@ -8,14 +8,52 @@ import { Capacitor } from "@capacitor/core";
 const VAPID_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 const isNative = Capacitor.isNativePlatform();
 
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise(resolve => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 // Lazy-load native plugin only on native platforms
 let PushNotifications = null;
+let pushPluginFailed = false;
+
+// Start loading eagerly on native so it's ready by the time user taps
+if (isNative) {
+  withTimeout(import("@capacitor/push-notifications"), 5000, null).then(mod => {
+    if (mod) {
+      PushNotifications = mod.PushNotifications;
+    } else {
+      console.warn("PushNotifications plugin load timed out on eager load");
+      pushPluginFailed = true;
+    }
+  }).catch(() => { pushPluginFailed = true; });
+}
+
+function getNativePushSync() {
+  return PushNotifications; // returns null if not loaded yet
+}
+
 async function getNativePush() {
-  if (!PushNotifications) {
-    const mod = await import("@capacitor/push-notifications");
+  if (PushNotifications) return PushNotifications;
+  if (pushPluginFailed) return null;
+  try {
+    const mod = await withTimeout(
+      import("@capacitor/push-notifications"),
+      4000,
+      null
+    );
+    if (!mod) {
+      pushPluginFailed = true;
+      return null;
+    }
     PushNotifications = mod.PushNotifications;
+    return PushNotifications;
+  } catch (e) {
+    pushPluginFailed = true;
+    return null;
   }
-  return PushNotifications;
 }
 
 // ─── Service Worker Registration (web only) ─────────────────
@@ -51,27 +89,51 @@ export function getNotificationPermission() {
 
 export async function checkNativePermission() {
   if (!isNative) {
-    if (!("Notification" in window)) return "default"; // treat as promptable, not unsupported
-    return Notification.permission; // "default" | "granted" | "denied"
+    if (!("Notification" in window)) return "default";
+    return Notification.permission;
+  }
+  // Try sync first — if plugin loaded already, use it; if failed, bail fast
+  const syncPush = getNativePushSync();
+  if (pushPluginFailed) return "prompt";
+  if (!syncPush) {
+    // Plugin still loading — wait for it with timeout
+    const Push = await getNativePush();
+    if (!Push) return "prompt";
+    try {
+      const result = await withTimeout(Push.checkPermissions(), 3000, null);
+      if (!result) return "prompt";
+      if (result.receive === "granted") return "granted";
+      if (result.receive === "denied") return "denied";
+      return "default";
+    } catch (e) {
+      return "prompt";
+    }
   }
   try {
-    const Push = await getNativePush();
-    const result = await Push.checkPermissions();
+    const result = await withTimeout(syncPush.checkPermissions(), 3000, null);
+    if (!result) return "prompt";
     if (result.receive === "granted") return "granted";
     if (result.receive === "denied") return "denied";
     return "default";
   } catch (e) {
-    console.error("Check native permission failed:", e);
-    return "default";
+    return "prompt";
   }
 }
 
 export async function requestNotificationPermission() {
   if (isNative) {
     try {
-      const Push = await getNativePush();
-      const result = await Push.requestPermissions();
-      return result.receive === "granted" ? "granted" : "denied";
+      if (pushPluginFailed) return "timeout";
+      const Push = getNativePushSync() || await getNativePush();
+      if (!Push) return "timeout";
+      const result = await withTimeout(Push.requestPermissions(), 5000, null);
+      if (!result) {
+        console.warn("requestPermissions timed out — re-checking actual state");
+        return "timeout";
+      }
+      if (result.receive === "granted") return "granted";
+      if (result.receive === "denied") return "denied";
+      return "default";
     } catch (e) {
       console.error("Native permission request failed:", e);
       return "denied";
@@ -142,40 +204,60 @@ export async function getCurrentSubscription() {
 // ─── Native (Capacitor) Push ─────────────────────────────────
 
 let nativeListenersRegistered = false;
+let _fcmToken = null;
+let _fcmError = null;
+let _tokenCallbacks = [];
+
+export function onFcmToken(cb) {
+  if (_fcmToken) { cb(_fcmToken, null); return; }
+  if (_fcmError) { cb(null, _fcmError); return; }
+  _tokenCallbacks.push(cb);
+}
 
 async function subscribeNative() {
   try {
-    const Push = await getNativePush();
-
-    // Register listeners only once
-    if (!nativeListenersRegistered) {
-      nativeListenersRegistered = true;
-
-      await Push.addListener("registration", async (token) => {
-        console.log("FCM token:", token.value);
-        await saveNativeToken(token.value);
-      });
-
-      await Push.addListener("registrationError", (err) => {
-        console.error("FCM registration error:", err);
-      });
-
-      await Push.addListener("pushNotificationReceived", (notification) => {
-        console.log("Push received (foreground):", notification);
-        // Show an in-app notification or handle silently
-      });
-
-      await Push.addListener("pushNotificationActionPerformed", (action) => {
-        console.log("Push action:", action);
-        // Handle notification tap — could navigate to a screen
-      });
+    // Use sync reference first — avoid re-entering async getNativePush()
+    const Push = getNativePushSync();
+    if (!Push) {
+      console.warn("subscribeNative: plugin not loaded, saving preference only");
+      return true;
     }
 
-    await Push.register();
+    // Register listeners and call register() entirely in background
+    setTimeout(() => {
+      try {
+        if (!nativeListenersRegistered) {
+          nativeListenersRegistered = true;
+          Push.addListener("registration", async (token) => {
+            console.log("FCM token:", token.value);
+            _fcmToken = token.value;
+            _tokenCallbacks.forEach(cb => cb(token.value, null));
+            _tokenCallbacks = [];
+            await saveNativeToken(token.value);
+          });
+          Push.addListener("registrationError", (err) => {
+            console.error("FCM registration error:", err);
+            _fcmError = err;
+            _tokenCallbacks.forEach(cb => cb(null, err));
+            _tokenCallbacks = [];
+          });
+          Push.addListener("pushNotificationReceived", (notification) => {
+            console.log("Push received (foreground):", notification);
+          });
+          Push.addListener("pushNotificationActionPerformed", (action) => {
+            console.log("Push action:", action);
+          });
+        }
+        Push.register().catch(e => console.error("Push.register() failed:", e));
+      } catch (e) {
+        console.error("Background push setup failed:", e);
+      }
+    }, 0);
+
     return true;
   } catch (e) {
     console.error("Native push subscribe failed:", e);
-    return null;
+    return true;
   }
 }
 

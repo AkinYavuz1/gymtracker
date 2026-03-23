@@ -91,6 +91,7 @@ const AI_PROMPTS = {
   Improve: [{ label: "Fix weak points", icon: "🎯", prompt: "What are my weak points? Give specific exercises to fix them." }, { label: "Break plateau", icon: "🚀", prompt: "My bench stalled. Give me a 3-week breakthrough plan." }, { label: "Optimize split", icon: "🔧", prompt: "Is my PPL split optimal? Suggest improvements." }],
   Plan: [{ label: "Next workout", icon: "📋", prompt: "Plan my next workout with exercises, sets, reps, and weights." }, { label: "Deload week", icon: "🧘", prompt: "Design a deload week based on my current loads." }, { label: "New program", icon: "🗓️", prompt: "Create a 4-week program based on my strength levels." }],
   Learn: [{ label: "Form tips", icon: "🎓", prompt: "Top 3 form cues for my compound lifts." }, { label: "Nutrition", icon: "🥗", prompt: "Nutrition advice for my training volume and muscle growth." }, { label: "Science", icon: "🔬", prompt: "Is my approach evidence-based? What does science say?" }],
+  Generate: [{ label: "Quick workout", icon: "⚡", prompt: "__GENERATE_WORKOUT__" }, { label: "Full program", icon: "🗓️", prompt: "__GENERATE_PROGRAM__" }],
 };
 
 /* ═══ THEME ═══ */
@@ -315,7 +316,171 @@ function PricingScreen({ currentPlan, onSelect, onBack }) {
 
 // === SECTION: AI Coach ===
 /* ═══ AI COACH ═══ */
-function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing, activeEnrollment, onNavigate, onProgramCreated }) {
+
+function validateExerciseNames(programData, customExercises = []) {
+  const validNames = new Set();
+  Object.values(EX_LIB).forEach(cat => cat.forEach(ex => validNames.add(ex.name)));
+  customExercises.forEach(cx => validNames.add(cx.name));
+  const lowerMap = new Map();
+  validNames.forEach(n => lowerMap.set(n.toLowerCase(), n));
+  const cleaned = { ...programData, days: (programData.days || []).map(day => {
+    const exercises = (day.exercises || []).map(ex => {
+      if (validNames.has(ex.exercise_name)) return ex;
+      const lower = lowerMap.get(ex.exercise_name?.toLowerCase());
+      if (lower) return { ...ex, exercise_name: lower };
+      return null;
+    }).filter(Boolean);
+    return { ...day, exercises };
+  }).filter(day => day.exercises.length > 0) };
+  return cleaned;
+}
+
+function getExerciseNamesByEquipment(selectedEquipment, customExercises = []) {
+  const names = [];
+  Object.values(EX_LIB).forEach(cat => cat.forEach(ex => {
+    const eqMap = { Barbell: "Barbell", Dumbbell: "Dumbbell", Cable: "Cable", Machine: "Machine", Bodyweight: "Bodyweight", BW: "Bodyweight" };
+    const mapped = eqMap[ex.equipment] || ex.equipment;
+    if (selectedEquipment.includes(mapped)) names.push(ex.name);
+  }));
+  customExercises.forEach(cx => {
+    const eqMap = { Barbell: "Barbell", Dumbbell: "Dumbbell", Cable: "Cable", Machine: "Machine", Bodyweight: "Bodyweight", BW: "Bodyweight" };
+    const mapped = eqMap[cx.equipment] || cx.equipment || "Bodyweight";
+    if (selectedEquipment.includes(mapped)) names.push(cx.name);
+  });
+  return [...new Set(names)];
+}
+
+function GenerateWizard({ mode, onGenerate, onCancel, profile }) {
+  const [goal, setGoal] = useState(profile?.training_goal || "hypertrophy");
+  const [daysPerWeek, setDaysPerWeek] = useState(3);
+  const [equipment, setEquipment] = useState(["Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight"]);
+  const [focus, setFocus] = useState([]);
+  const [duration, setDuration] = useState(60);
+  const [split, setSplit] = useState("auto");
+
+  const goals = ["hypertrophy", "strength", "endurance", "general"];
+  const equipmentOpts = ["Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight"];
+  const focusOpts = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
+  const durations = [30, 45, 60, 90];
+  const splits = ["auto", "ppl", "upper_lower", "full_body"];
+  const splitLabels = { auto: "Auto", ppl: "PPL", upper_lower: "Upper/Lower", full_body: "Full Body" };
+
+  const toggleList = (list, setList, val) => setList(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val]);
+
+  return (
+    <div style={{ padding: "8px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{mode === "program" ? "Generate Program" : "Generate Workout"}</div>
+        <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>AI will create a structured {mode === "program" ? "multi-day program" : "single workout"} for you</div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Goal</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {goals.map(g => <Pill key={g} active={goal === g} color={C.ai} onClick={() => setGoal(g)} style={{ fontSize: 12, padding: "7px 14px", textTransform: "capitalize" }}>{g}</Pill>)}
+        </div>
+      </div>
+
+      {mode === "program" && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Days per week</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button onClick={() => setDaysPerWeek(Math.max(2, daysPerWeek - 1))} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>−</button>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#fff", fontFamily: C.font, minWidth: 30, textAlign: "center" }}>{daysPerWeek}</div>
+            <button onClick={() => setDaysPerWeek(Math.min(6, daysPerWeek + 1))} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.ai}40`, background: `${C.ai}12`, color: C.ai, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Equipment</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {equipmentOpts.map(e => <Pill key={e} active={equipment.includes(e)} color={C.ai} onClick={() => toggleList(equipment, setEquipment, e)} style={{ fontSize: 12, padding: "7px 14px" }}>{e}</Pill>)}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Focus areas <span style={{ opacity: 0.5 }}>(optional)</span></div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {focusOpts.map(f => <Pill key={f} active={focus.includes(f)} color={C.ai} onClick={() => toggleList(focus, setFocus, f)} style={{ fontSize: 12, padding: "7px 14px" }}>{f}</Pill>)}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Session duration</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {durations.map(d => <Pill key={d} active={duration === d} color={C.ai} onClick={() => setDuration(d)} style={{ fontSize: 12, padding: "7px 14px" }}>{d} min</Pill>)}
+        </div>
+      </div>
+
+      {mode === "program" && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Split preference</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {splits.map(s => <Pill key={s} active={split === s} color={C.ai} onClick={() => setSplit(s)} style={{ fontSize: 12, padding: "7px 14px" }}>{splitLabels[s]}</Pill>)}
+          </div>
+        </div>
+      )}
+
+      <button onClick={() => onGenerate({ goal, daysPerWeek: mode === "program" ? daysPerWeek : 1, equipment, focus, duration, split: mode === "program" ? split : "full_body", mode })} disabled={equipment.length === 0} style={{
+        width: "100%", padding: "14px", borderRadius: 14, border: "none", marginTop: 8,
+        background: equipment.length === 0 ? "rgba(255,255,255,0.06)" : `linear-gradient(135deg, ${C.ai}, #7B4CFF)`,
+        color: equipment.length === 0 ? C.dim : "#fff", fontSize: 15, fontWeight: 800, cursor: equipment.length === 0 ? "not-allowed" : "pointer", fontFamily: C.font,
+      }}>Generate {mode === "program" ? "Program" : "Workout"}</button>
+      <button onClick={onCancel} style={{ width: "100%", padding: "10px", borderRadius: 12, border: "none", background: "transparent", color: C.dim, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.font, marginTop: 6 }}>Cancel</button>
+    </div>
+  );
+}
+
+function GeneratePreview({ data, mode, onCreateProgram, onRegenerate, onBack, loading }) {
+  return (
+    <div style={{ padding: "8px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 16 }}>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font }}>{data.name}</div>
+        {data.description && <div style={{ fontSize: 12, color: C.dim, marginTop: 4, lineHeight: 1.4 }}>{data.description}</div>}
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 8 }}>
+          {data.goal && <span style={{ padding: "3px 10px", borderRadius: 8, background: `${C.ai}15`, color: C.ai, fontSize: 10, fontWeight: 700, fontFamily: C.mono, textTransform: "uppercase" }}>{data.goal}</span>}
+          {data.split_type && <span style={{ padding: "3px 10px", borderRadius: 8, background: `${C.ai}15`, color: C.ai, fontSize: 10, fontWeight: 700, fontFamily: C.mono, textTransform: "uppercase" }}>{data.split_type.replace("_", " ")}</span>}
+        </div>
+      </div>
+
+      {(data.days || []).map((day, di) => (
+        <div key={di} style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, padding: "14px", marginBottom: 10 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: C.font }}>{day.name || `Day ${di + 1}`}</div>
+            {day.muscle_groups?.length > 0 && <div style={{ display: "flex", gap: 4 }}>
+              {day.muscle_groups.map((mg, j) => <span key={j} style={{ padding: "2px 8px", borderRadius: 6, background: "rgba(255,255,255,0.06)", color: C.dim, fontSize: 9, fontFamily: C.mono }}>{mg}</span>)}
+            </div>}
+          </div>
+          {(day.exercises || []).map((ex, ei) => (
+            <div key={ei} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderTop: ei > 0 ? `1px solid ${C.border}` : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {ex.is_compound && <span style={{ padding: "1px 5px", borderRadius: 4, background: `${C.ai}20`, color: C.ai, fontSize: 8, fontWeight: 800, fontFamily: C.mono }}>C</span>}
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", fontFamily: C.font }}>{ex.exercise_name}</span>
+              </div>
+              <span style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>{ex.base_sets}x{ex.base_reps}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+        <button onClick={onCreateProgram} disabled={loading} style={{
+          flex: 2, padding: "14px", borderRadius: 14, border: "none",
+          background: loading ? "rgba(255,255,255,0.06)" : `linear-gradient(135deg, ${C.ai}, #7B4CFF)`,
+          color: loading ? C.dim : "#fff", fontSize: 14, fontWeight: 800, cursor: loading ? "not-allowed" : "pointer", fontFamily: C.font,
+        }}>{loading ? "Creating..." : "Create Program"}</button>
+        <button onClick={onRegenerate} disabled={loading} style={{
+          flex: 1, padding: "14px", borderRadius: 14, border: `1px solid ${C.ai}30`, background: `${C.ai}08`,
+          color: C.ai, fontSize: 13, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer", fontFamily: C.font,
+        }}>Redo</button>
+      </div>
+      <button onClick={onBack} disabled={loading} style={{ width: "100%", padding: "10px", borderRadius: 12, border: "none", background: "transparent", color: C.dim, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: C.font, marginTop: 6 }}>Back to settings</button>
+    </div>
+  );
+}
+
+function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing, activeEnrollment, onNavigate, onProgramCreated, customExercises, profile }) {
   const [msgs, setMsgs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activeCat, setActiveCat] = useState("Analyze");
@@ -326,16 +491,104 @@ function AICoachScreen({ plan, queriesUsed, onUseQuery, onShowPricing, activeEnr
   const [actionLoading, setActionLoading] = useState(false);
   const [actionError, setActionError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
+  const [generateMode, setGenerateMode] = useState(null);
+  const [generatedData, setGeneratedData] = useState(null);
+  const [generateStep, setGenerateStep] = useState("config");
+  const [generateFormValues, setGenerateFormValues] = useState(null);
 
   const planData = PLANS[plan];
   const remaining = Math.max(0, planData.queries - queriesUsed);
   const limitReached = remaining <= 0;
 
-  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs, loading]);
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs, loading, generateStep]);
   useEffect(() => { if (!successMsg) return; const t = setTimeout(() => setSuccessMsg(null), 4000); return () => clearTimeout(t); }, [successMsg]);
+
+  const handleGenerate = async (formValues) => {
+    if (limitReached) return;
+    setGenerateFormValues(formValues);
+    setGenerateStep("loading");
+    setActionError(null);
+    const validExercises = getExerciseNamesByEquipment(formValues.equipment, customExercises);
+    const repRanges = { hypertrophy: "8-12", strength: "3-6", endurance: "15-20", general: "6-12" };
+    const prompt = `Generate a ${formValues.mode === "program" ? `${formValues.daysPerWeek}-day workout program` : "single workout session"}.
+
+Goal: ${formValues.goal}
+${formValues.mode === "program" ? `Split preference: ${formValues.split === "auto" ? "choose the best split for the goal and days" : formValues.split}` : ""}
+${formValues.focus.length > 0 ? `Focus areas: ${formValues.focus.join(", ")}` : "Hit all major muscle groups"}
+Session duration: ~${formValues.duration} minutes
+Rep range for goal: ${repRanges[formValues.goal] || "6-12"}
+
+VALID EXERCISE NAMES (use ONLY these exact names):
+${validExercises.join(", ")}
+
+Rules:
+- Compound exercises first in each day
+- 4-6 exercises per day
+- Each exercise needs base_sets (2-5) and base_reps matching goal rep range
+- Mark compounds with is_compound: true
+
+Return this EXACT JSON structure:
+{"name":"Program Name","description":"Brief description","split_type":"${formValues.split === "auto" ? "ppl" : formValues.split}","days_per_week":${formValues.daysPerWeek},"goal":"${formValues.goal}","color":"#A47BFF","icon":"🤖","days":[{"day_index":0,"name":"Day Name","muscle_groups":["Chest","Shoulders"],"exercises":[{"exercise_name":"Bench Press","base_sets":3,"base_reps":8,"is_compound":true,"sort_order":0}]}]}
+
+split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
+    try {
+      const maxTokens = formValues.daysPerWeek > 3 ? 2000 : 1200;
+      const result = await callCoachAPI(prompt, "Generate workout", null, { max_tokens: maxTokens });
+      onUseQuery();
+      setTotalCost(prev => prev + (result.cost_usd || 0));
+      const parsed = extractJSON(result.text);
+      if (!parsed?.name || !parsed?.days?.length) {
+        setActionError("AI returned invalid format. Try again.");
+        setGenerateStep("config");
+        return;
+      }
+      const cleaned = validateExerciseNames(parsed, customExercises);
+      if (cleaned.days.length === 0) {
+        setActionError("No valid exercises in response. Try different equipment.");
+        setGenerateStep("config");
+        return;
+      }
+      if (formValues.mode === "program" && cleaned.days.length < formValues.daysPerWeek) {
+        setActionError(`AI only generated ${cleaned.days.length} of ${formValues.daysPerWeek} days. Try again.`);
+        setGenerateStep("config");
+        return;
+      }
+      setGeneratedData(cleaned);
+      setGenerateStep("preview");
+    } catch (e) {
+      setActionError(e.message || "Generation failed. Try again.");
+      setGenerateStep("config");
+    }
+  };
+
+  const handleCreateFromGenerated = async () => {
+    if (!generatedData) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const newProgram = await createUserProgram(generatedData);
+      setSuccessMsg("Program created! Navigating...");
+      setGenerateMode(null);
+      setGeneratedData(null);
+      setGenerateStep("config");
+      if (onProgramCreated) onProgramCreated(newProgram.id);
+      setTimeout(() => { if (onNavigate) onNavigate("program"); }, 1200);
+    } catch (e) {
+      setActionError(e.message || "Failed to create program.");
+    }
+    setActionLoading(false);
+  };
 
   const send = async (prompt, label) => {
     if (limitReached) return;
+    if (prompt.startsWith("__GENERATE_")) {
+      setGenerateMode(prompt === "__GENERATE_PROGRAM__" ? "program" : "workout");
+      setGenerateStep("config");
+      setGeneratedData(null);
+      setActionError(null);
+      setShowPrompts(false);
+      return;
+    }
     setPendingMsgIdx(null);
     setActionError(null);
     setSuccessMsg(null);
@@ -427,7 +680,7 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
             </div>
             <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>Coach</div>
           </div>
-          {msgs.length > 0 && <button onClick={() => { setMsgs([]); setShowPrompts(true); setPendingMsgIdx(null); setActionError(null); setSuccessMsg(null); }} style={{ background: `${C.ai}15`, border: `1px solid ${C.ai}30`, borderRadius: 10, padding: "6px 12px", color: C.ai, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>New</button>}
+          {(msgs.length > 0 || generateMode) && <button onClick={() => { setMsgs([]); setShowPrompts(true); setPendingMsgIdx(null); setActionError(null); setSuccessMsg(null); setGenerateMode(null); setGeneratedData(null); setGenerateStep("config"); }} style={{ background: `${C.ai}15`, border: `1px solid ${C.ai}30`, borderRadius: 10, padding: "6px 12px", color: C.ai, fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: C.font }}>New</button>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: "8px 12px", borderRadius: 12, background: C.card, border: `1px solid ${C.border}` }}>
           <div style={{ flex: 1 }}>
@@ -472,7 +725,27 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
           </div>
         )}
 
-        {msgs.map((m, i) => (
+        {generateMode && generateStep === "config" && (
+          <GenerateWizard mode={generateMode} onGenerate={handleGenerate} onCancel={() => { setGenerateMode(null); setShowPrompts(true); }} profile={profile} />
+        )}
+
+        {generateMode && generateStep === "loading" && (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <div style={{ width: 56, height: 56, borderRadius: 20, margin: "0 auto 14px", background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: `0 6px 24px ${C.ai}40` }}>🤖</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Generating your {generateMode}...</div>
+            <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>{[0, 1, 2].map(i => (<div key={i} style={{ width: 7, height: 7, borderRadius: 4, background: C.ai, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />))}</div>
+          </div>
+        )}
+
+        {generateMode && generateStep === "preview" && generatedData && (
+          <GeneratePreview data={generatedData} mode={generateMode} onCreateProgram={handleCreateFromGenerated} onRegenerate={() => handleGenerate(generateFormValues)} onBack={() => setGenerateStep("config")} loading={actionLoading} />
+        )}
+
+        {actionError && generateMode && (
+          <div style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(255,107,60,0.1)", border: "1px solid rgba(255,107,60,0.2)", color: "#FF6B3C", fontSize: 12, marginBottom: 8, fontFamily: C.font }}>{actionError}</div>
+        )}
+
+        {!generateMode && msgs.map((m, i) => (
           <div key={i} style={{ marginBottom: 10, display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
             {m.role === "assistant" && <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}><div style={{ width: 16, height: 16, borderRadius: 5, background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>🧠</div><span style={{ fontSize: 9, color: C.ai, fontFamily: C.mono, fontWeight: 600 }}>COACH</span></div>}
             <div style={{ maxWidth: "88%", padding: "11px 13px", borderRadius: 15, background: m.role === "user" ? `${C.ai}20` : C.card, border: m.role === "user" ? `1px solid ${C.ai}30` : `1px solid ${C.border}`, borderTopRightRadius: m.role === "user" ? 4 : 15, borderTopLeftRadius: m.role === "assistant" ? 4 : 15 }}>
@@ -481,7 +754,7 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
           </div>
         ))}
 
-        {loading && <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}><div style={{ width: 16, height: 16, borderRadius: 5, background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>🧠</div><div style={{ display: "flex", gap: 4, padding: "10px 14px", background: C.card, borderRadius: 14, border: `1px solid ${C.border}` }}>{[0, 1, 2].map(i => (<div key={i} style={{ width: 7, height: 7, borderRadius: 4, background: C.ai, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />))}</div></div>}
+        {!generateMode && loading && <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 10 }}><div style={{ width: 16, height: 16, borderRadius: 5, background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8 }}>🧠</div><div style={{ display: "flex", gap: 4, padding: "10px 14px", background: C.card, borderRadius: 14, border: `1px solid ${C.border}` }}>{[0, 1, 2].map(i => (<div key={i} style={{ width: 7, height: 7, borderRadius: 4, background: C.ai, animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite` }} />))}</div></div>}
 
         {successMsg && (
           <div style={{ display: "flex", justifyContent: "center", padding: "6px 0 8px" }}>
@@ -489,7 +762,7 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
           </div>
         )}
 
-        {pendingMsgIdx !== null && !loading && !limitReached && (
+        {!generateMode && pendingMsgIdx !== null && !loading && !limitReached && (
           <div style={{ padding: "4px 0 12px" }}>
             {actionError && <div style={{ padding: "8px 12px", borderRadius: 10, background: "rgba(255,107,60,0.1)", border: "1px solid rgba(255,107,60,0.2)", color: "#FF6B3C", fontSize: 12, marginBottom: 8, fontFamily: C.font }}>{actionError}</div>}
             {activeEnrollment ? (
@@ -509,7 +782,7 @@ split_type must be one of: ppl, upper_lower, full_body, five_day_split, custom`;
           </div>
         )}
 
-        {pendingMsgIdx === null && lastMsgIsAssistant && !loading && !limitReached && (
+        {!generateMode && pendingMsgIdx === null && lastMsgIsAssistant && !loading && !limitReached && (
           <div style={{ padding: "6px 0 12px" }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
               {[{ label: "Go deeper", prompt: "Expand with more actionable steps." }, { label: "Make a plan", prompt: "Turn that into a day-by-day plan." }, { label: "Why?", prompt: "Explain the science behind this." }, { label: "What else?", prompt: "Most important change I should make?" }].map((f, i) => (
@@ -942,7 +1215,7 @@ function AuthScreen({ onSignUp, onSignIn, onLegal }) {
     <div style={{ padding: "40px 20px", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%", textAlign: "center" }}>
       <div style={{ fontSize: 32, fontWeight: 800, color: "#fff", marginBottom: 8, fontFamily: C.font }}>gAIns</div>
       <div style={{ fontSize: 13, color: C.dim, marginBottom: 4 }}>AI-powered strength training</div>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginBottom: 40 }}>v1.0.1</div>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.2)", marginBottom: 40 }}>v1.0.1.4</div>
 
       {mode === "forgot" && resetSent ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center" }}>
@@ -1921,7 +2194,14 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
 // === SECTION: Export ===
 /* ═══ EXPORT HELPERS ═══ */
 
-function triggerDownload(content, filename, mimeType) {
+async function triggerDownload(content, filename, mimeType) {
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const base64 = btoa(unescape(encodeURIComponent(content)));
+    await Filesystem.writeFile({ path: filename, data: base64, directory: Directory.Documents, recursive: true });
+    return `Saved to Documents/${filename}`;
+  }
+  // Desktop / web browser — standard download
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -2092,16 +2372,24 @@ async function generatePDF(workouts, sets, prs, dateRangeLabel, userName) {
     });
   }
 
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory } = await import("@capacitor/filesystem");
+    const base64 = doc.output("datauristring").split(",")[1];
+    await Filesystem.writeFile({ path: "gains-report.pdf", data: base64, directory: Directory.Documents, recursive: true });
+    return "Saved to Documents/gains-report.pdf";
+  }
   doc.save("gains-report.pdf");
 }
 
 /* ═══ EXPORT MODAL ═══ */
-function ExportModal({ plan, workouts = [], prs = [], onClose, initialType = "both", userName }) {
+function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, initialType = "both", userName }) {
+  const isFree = plan === "free";
   const [exportType, setExportType] = useState(initialType);
   const [dateRange, setDateRange] = useState("all");
   const [format, setFormat] = useState("csv");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   const handleExport = async () => {
     setLoading(true);
@@ -2132,26 +2420,26 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, initialType = "bo
       if (format === "pdf") {
         const prsForPDF = exportType === "history" ? [] : filteredPRs;
         const wosForPDF = exportType === "prs" ? [] : filtered;
-        await generatePDF(wosForPDF, sets, prsForPDF, dateRangeLabel, userName);
-        onClose();
+        const msg = await generatePDF(wosForPDF, sets, prsForPDF, dateRangeLabel, userName);
+        if (msg) { setSuccess(msg); } else { onClose(); }
         return;
       }
 
       // CSV
+      let msg;
       if (exportType === "both") {
         const woCsv = buildWorkoutCSV(filtered, sets);
         const prCsv = buildPRCSV(filteredPRs);
-        triggerDownload(woCsv, "gains-history.csv", "text/csv");
-        setTimeout(() => triggerDownload(prCsv, "gains-prs.csv", "text/csv"), 300);
+        await triggerDownload(woCsv, "gains-history.csv", "text/csv");
+        msg = await triggerDownload(prCsv, "gains-prs.csv", "text/csv");
       } else if (exportType === "history") {
-        triggerDownload(buildWorkoutCSV(filtered, sets), "gains-history.csv", "text/csv");
+        msg = await triggerDownload(buildWorkoutCSV(filtered, sets), "gains-history.csv", "text/csv");
       } else {
-        triggerDownload(buildPRCSV(filteredPRs), "gains-prs.csv", "text/csv");
+        msg = await triggerDownload(buildPRCSV(filteredPRs), "gains-prs.csv", "text/csv");
       }
-      onClose();
+      if (msg) { setSuccess(msg); } else { onClose(); }
     } catch (e) {
-      console.error("Export error:", e);
-      setError("Export failed. Please try again.");
+      console.error("Export error:", e); setError("Export failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -2202,18 +2490,31 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, initialType = "bo
         />
 
         {error && <div style={{ fontSize: 12, color: "#FF6B3C", marginBottom: 12 }}>{error}</div>}
+        {success && <div style={{ fontSize: 13, color: C.accent, fontWeight: 700, marginBottom: 12, textAlign: "center" }}>{success}</div>}
 
-        <button onClick={handleExport} disabled={loading} style={{
-          width: "100%", padding: "14px", borderRadius: 16, fontSize: 15, fontWeight: 800, fontFamily: C.font,
-          background: loading ? C.border : C.accent, color: loading ? C.dim : C.bg,
-          border: "none", cursor: loading ? "not-allowed" : "pointer", marginBottom: 10
-        }}>
-          {loading ? "Exporting…" : `Export ${format.toUpperCase()}`}
-        </button>
+        {isFree ? (
+          <>
+            <div style={{ fontSize: 13, color: C.dim, textAlign: "center", marginBottom: 12, lineHeight: 1.5 }}>
+              Export is available on <span style={{ color: C.accent, fontWeight: 700 }}>Pro</span> and <span style={{ color: C.accent, fontWeight: 700 }}>Unlimited</span> plans
+            </div>
+            <button onClick={onShowPricing} style={{
+              width: "100%", padding: "14px", borderRadius: 16, fontSize: 15, fontWeight: 800, fontFamily: C.font,
+              background: C.accent, color: C.bg, border: "none", cursor: "pointer", marginBottom: 10
+            }}>Upgrade to Export</button>
+          </>
+        ) : (
+          <button onClick={handleExport} disabled={loading || success} style={{
+            width: "100%", padding: "14px", borderRadius: 16, fontSize: 15, fontWeight: 800, fontFamily: C.font,
+            background: (loading || success) ? C.border : C.accent, color: (loading || success) ? C.dim : C.bg,
+            border: "none", cursor: (loading || success) ? "not-allowed" : "pointer", marginBottom: 10
+          }}>
+            {loading ? "Exporting…" : success ? "Done" : `Export ${format.toUpperCase()}`}
+          </button>
+        )}
         <button onClick={onClose} style={{
           width: "100%", padding: "12px", borderRadius: 16, fontSize: 14, fontWeight: 700, fontFamily: C.font,
           background: "transparent", color: C.dim, border: `1px solid ${C.border}`, cursor: "pointer"
-        }}>Cancel</button>
+        }}>{success ? "Close" : "Cancel"}</button>
       </div>
     </div>
   );
@@ -2284,10 +2585,7 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
           <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Log</div>
           <div style={{ fontSize: 26, fontWeight: 800, color: "#fff", fontFamily: C.font, marginTop: 2 }}>History</div>
         </div>
-        {plan === "free"
-          ? <button onClick={onShowPricing} style={{ fontSize: 12, fontWeight: 700, color: C.dim, background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "8px 14px", cursor: "pointer", fontFamily: C.font }}>🔒 Export</button>
-          : <button onClick={() => setExportOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: C.bg, background: C.accent, border: "none", borderRadius: 12, padding: "8px 14px", cursor: "pointer", fontFamily: C.font }}>↓ Export</button>
-        }
+        <button onClick={() => setExportOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: plan === "free" ? C.dim : C.bg, background: plan === "free" ? C.card : C.accent, border: plan === "free" ? `1px solid ${C.border}` : "none", borderRadius: 12, padding: "8px 14px", cursor: "pointer", fontFamily: C.font }}>{plan === "free" ? "🔒 " : "↓ "}Export</button>
       </div>
       {workouts.length === 0 && (
         <div style={{ textAlign: "center", paddingTop: 40 }}>
@@ -2302,6 +2600,7 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
           workouts={workouts}
           prs={prs}
           onClose={() => setExportOpen(false)}
+          onShowPricing={() => { setExportOpen(false); onShowPricing(); }}
           userName={userName}
         />
       )}
@@ -2993,6 +3292,7 @@ function NotificationScreen({ onBack }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const timeout = setTimeout(() => setLoading(false), 5000);
     (async () => {
       const [savedPrefs, perm, sub] = await Promise.all([
         getNotificationPreferences(),
@@ -3003,29 +3303,29 @@ function NotificationScreen({ onBack }) {
       setPermission(perm);
       setSubscribed(!!sub);
       setLoading(false);
+      clearTimeout(timeout);
     })();
+    return () => clearTimeout(timeout);
   }, []);
 
   const handleEnableNotifications = async () => {
     const currentPerm = await checkNativePermission();
     setPermission(currentPerm);
-    if (currentPerm === "default") {
-      setShowPrePrompt(true);
+    if (currentPerm === "granted") {
+      await subscribeToPush();
+      setSubscribed(true);
       return;
     }
-    if (currentPerm === "granted") {
-      const sub = await subscribeToPush();
-      // Even without push subscription (e.g. no VAPID key), mark as enabled if permission granted
-      setSubscribed(!!sub || currentPerm === "granted");
-    }
+    setShowPrePrompt(true);
   };
 
   const handlePrePromptAccept = async () => {
     setShowPrePrompt(false);
-    const result = await requestNotificationPermission();
-    setPermission(result);
-    if (result === "granted") {
-      const sub = await subscribeToPush();
+    await requestNotificationPermission();
+    const actualPerm = await checkNativePermission();
+    setPermission(actualPerm);
+    if (actualPerm === "granted" || actualPerm === "prompt") {
+      await subscribeToPush();
       setSubscribed(true);
     }
   };
@@ -3071,7 +3371,7 @@ function NotificationScreen({ onBack }) {
             </div>
             <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>
               {permission === "denied"
-                ? "Blocked in device settings"
+                ? (Capacitor.isNativePlatform() ? "Blocked in device settings" : "Blocked in browser settings")
                 : subscribed
                 ? "You'll receive push notifications"
                 : "Turn on to get training reminders"}
@@ -3098,7 +3398,9 @@ function NotificationScreen({ onBack }) {
         </div>
         {permission === "denied" && (
           <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 10, background: "rgba(255,107,60,0.1)", border: "1px solid rgba(255,107,60,0.2)", fontSize: 11, color: "#FF6B3C", fontFamily: C.mono }}>
-            Notifications are blocked. Enable them in your device settings, then reopen the app.
+            {Capacitor.isNativePlatform()
+              ? "Notifications are blocked. Enable them in your device settings, then reopen the app."
+              : "Notifications are blocked in your browser. Click the lock icon in the address bar, set Notifications to Allow, then refresh."}
           </div>
         )}
       </div>
@@ -3174,6 +3476,7 @@ function NotificationScreen({ onBack }) {
           </div>
         </div>
       )}
+
     </div>
   );
 }
@@ -3729,7 +4032,7 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
         </button>
 
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
-          gAIns v1.0.1
+          gAIns v1.0.1.4
         </div>
 
         </div>{/* end scrollable */}
@@ -6043,7 +6346,7 @@ export default function GAIns() {
         {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} onDeleteProgram={async (id) => { try { await deleteUserProgram(id); refreshAppData(); } catch (e) { console.error(e); } }} />}
         {screen === "program" && !programOnboardingProgram && showProgramBuilder && <ProgramBuilderScreen onBack={() => setShowProgramBuilder(false)} onCreated={(newProgram) => { setShowProgramBuilder(false); setHighlightProgramId(newProgram.id); refreshAppData(); }} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
-        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} />}
+        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} customExercises={customExercises} profile={profile} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
         {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} plan={plan} onShowPricing={() => nav("pricing")} userName={userName} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onNav={nav} profile={profile} />}
