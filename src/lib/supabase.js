@@ -26,19 +26,10 @@ export const supabase = createClient(
 );
 
 // ─── Session cache ───────────────────────────────────────────
-// Keeps the last known session in memory so data functions can get user.id
-// without making a network round-trip on every call. Updated by the listener
-// below and by signIn/signOut. This avoids the gotrue Web Lock entirely.
+// Kept fresh by App.jsx calling setSessionCache() from its single
+// onAuthStateChange listener. Zero network calls, zero Web Lock usage.
 let _cachedSession = null;
-
-supabase.auth.onAuthStateChange((event, session) => {
-  _cachedSession = session;
-});
-
-// Seed the cache immediately from local storage (sync, no network, no lock).
-supabase.auth.getSession().then(({ data: { session } }) => {
-  if (session) _cachedSession = session;
-});
+export function setSessionCache(session) { _cachedSession = session; }
 
 // ─── Auth helpers ───────────────────────────────────────────
 

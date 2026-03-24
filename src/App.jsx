@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
-import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise, logLoginEvent, logPageEvent } from "./lib/supabase";
+import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise, logLoginEvent, logPageEvent, setSessionCache } from "./lib/supabase";
 import { detectFormat, parseCSV } from "./lib/importParser";
 import { calculateReadinessScore } from "./lib/readinessScore";
 import { isHealthAvailable, requestHealthPermissions, fetchSleepData, fetchHRVData } from "./lib/healthData";
@@ -5931,6 +5931,7 @@ export default function GAIns() {
     // mount for returning users, and SIGNED_IN for fresh logins. No separate
     // getSession() call to avoid lock contention with gotrue-js.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setSessionCache(session);
       if (event === 'INITIAL_SESSION') {
         // Returning user: app opened with existing session
         if (session?.user) {
