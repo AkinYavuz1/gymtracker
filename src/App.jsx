@@ -5931,10 +5931,12 @@ export default function GAIns() {
     // mount for returning users, and SIGNED_IN for fresh logins. No separate
     // getSession() call to avoid lock contention with gotrue-js.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[auth] event:', event, 'user:', session?.user?.id ?? 'none');
       setSessionCache(session);
       if (event === 'INITIAL_SESSION') {
         // Returning user: app opened with existing session
         if (session?.user) {
+          console.log('[auth] INITIAL_SESSION — calling logLoginEvent');
           logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
           try {
             const prof = await getProfile();
@@ -5955,6 +5957,7 @@ export default function GAIns() {
         clearTimeout(timeout);
         setAuthLoading(false);
       } else if (event === 'SIGNED_IN') {
+        console.log('[auth] SIGNED_IN — calling logLoginEvent');
         setUser(session.user);
         setTimeout(() => seedDummyData(), 1000);
         try {
