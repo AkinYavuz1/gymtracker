@@ -5,7 +5,7 @@ Use `grep -n "=== SECTION:"` on App.jsx to jump directly to a screen.
 
 ## src/
 
-- `App.jsx` (6316 lines) — All UI screens and state; sections marked `// === SECTION: X ===`
+- `App.jsx` (6719 lines) — All UI screens and state; sections marked `// === SECTION: X ===`
   - SECTION: Shared Components (line 94) — MiniChart, Pill, WeightStepper, RepBubbles
   - SECTION: Pricing (line 121) — PricingScreen
   - SECTION: AI Coach (line 224) — AICoachScreen, chat UI, quota display

@@ -4718,21 +4718,37 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
     const PUSH_CATS = ["Chest", "Shoulders"];
     const PULL_CATS = ["Back", "Arms"];
 
-    // Fill a pool up to exPerSession items, never repeating within a single day
-    const fillSlots = (pool) => pool.slice(0, exPerSession);
+    // Distribute exercises across multiple sessions with variety
+    // Compounds (barbells, pull-ups, dips) come first, then rest in original order
+    function distributePool(pool, sessionCount, exPerSession) {
+      const sorted = [...pool].sort((a, b) => {
+        const aComp = (a.equipment === "Barbell" || ["Pull-ups", "Chest Dip"].includes(a.name)) ? 0 : 1;
+        const bComp = (b.equipment === "Barbell" || ["Pull-ups", "Chest Dip"].includes(b.name)) ? 0 : 1;
+        return aComp - bComp;
+      });
+      return Array.from({ length: sessionCount }, (_, i) => {
+        const slots = [];
+        const seen = new Set();
+        for (let j = 0; j < exPerSession; j++) {
+          const ex = sorted[(i * exPerSession + j) % sorted.length];
+          if (!seen.has(ex.name)) { seen.add(ex.name); slots.push(ex); }
+        }
+        return slots;
+      });
+    }
 
     let buckets;
     if (split_type === "full_body") {
-      buckets = Array.from({ length: daysPerWeek }, (_, dayIdx) =>
-        fillSlots(selectedExercises)
-      );
+      buckets = distributePool(selectedExercises, daysPerWeek, exPerSession);
     } else if (split_type === "upper_lower") {
       const upper = selectedExercises.filter(e => UPPER_CATS.includes(e.category));
       const lower = selectedExercises.filter(e => !UPPER_CATS.includes(e.category));
       // Fallback: if one bucket is empty, use all exercises
       const upperPool = upper.length > 0 ? upper : selectedExercises;
       const lowerPool = lower.length > 0 ? lower : selectedExercises;
-      buckets = Array.from({ length: daysPerWeek }, (_, i) => fillSlots(i % 2 === 0 ? upperPool : lowerPool));
+      const upperSlots = distributePool(upperPool, 2, exPerSession);
+      const lowerSlots = distributePool(lowerPool, 2, exPerSession);
+      buckets = [upperSlots[0], lowerSlots[0], upperSlots[1], lowerSlots[1]];
     } else {
       const push = selectedExercises.filter(e => PUSH_CATS.includes(e.category));
       const pull = selectedExercises.filter(e => PULL_CATS.includes(e.category));
@@ -4741,8 +4757,19 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
       const pushPool = push.length > 0 ? push : selectedExercises;
       const pullPool = pull.length > 0 ? pull : selectedExercises;
       const legsPool = legs.length > 0 ? legs : selectedExercises;
-      const pplCycle = [pushPool, pullPool, legsPool];
-      buckets = Array.from({ length: daysPerWeek }, (_, i) => fillSlots(pplCycle[i % 3]));
+      const pushSessions = daysPerWeek >= 6 ? 2 : 1;
+      const pullSessions = daysPerWeek >= 6 ? 2 : 1;
+      const legsSessions = daysPerWeek >= 5 ? (daysPerWeek === 5 ? 1 : 2) : 1;
+      const pushSlots = distributePool(pushPool, pushSessions, exPerSession);
+      const pullSlots = distributePool(pullPool, pullSessions, exPerSession);
+      const legsSlots = distributePool(legsPool, legsSessions, exPerSession);
+      let pi = 0, qi = 0, li = 0;
+      buckets = Array.from({ length: daysPerWeek }, (_, i) => {
+        const t = i % 3;
+        if (t === 0) return pushSlots[pi++ % pushSlots.length];
+        if (t === 1) return pullSlots[qi++ % pullSlots.length];
+        return legsSlots[li++ % legsSlots.length];
+      });
     }
 
     const dayNames = { full_body: ["Full Body A", "Full Body B", "Full Body C", "Full Body D", "Full Body E", "Full Body F"],
@@ -4866,6 +4893,15 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
               <span style={{ fontSize: 28, fontWeight: 800, color: programColor, fontFamily: C.mono, minWidth: 30, textAlign: "center" }}>{daysPerWeek}</span>
               <button onClick={() => setDaysPerWeek(d => Math.min(6, d + 1))} style={{ width: 40, height: 40, borderRadius: 12, background: C.card, border: `1px solid ${C.border}`, color: "#fff", fontSize: 20, cursor: "pointer", fontFamily: C.font }}>+</button>
             </div>
+            <div style={{ fontSize: 12, color: C.dim, marginTop: 8 }}>
+              {{
+                2: "Full Body — 2 different sessions per week",
+                3: "Full Body A/B/C — 3 distinct sessions rotating",
+                4: "Upper/Lower — alternating upper and lower body",
+                5: "PPL — Push, Pull, Legs over 5 days",
+                6: "PPL — 2× Push, Pull, and Legs with variety",
+              }[daysPerWeek]}
+            </div>
           </div>
 
           <div>
@@ -4933,11 +4969,43 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
               );
             })}
           </div>
+          {(() => {
+            const UPPER_CATS = ["Chest", "Back", "Shoulders", "Arms"];
+            const PUSH_CATS = ["Chest", "Shoulders"];
+            const PULL_CATS = ["Back", "Arms"];
+            const upper = selectedExercises.filter(e => UPPER_CATS.includes(e.category)).length;
+            const lower = selectedExercises.filter(e => !UPPER_CATS.includes(e.category)).length;
+            const push = selectedExercises.filter(e => PUSH_CATS.includes(e.category)).length;
+            const pull = selectedExercises.filter(e => PULL_CATS.includes(e.category)).length;
+            const legs = selectedExercises.filter(e => e.category === "Legs").length;
+            let hint = null;
+            if (daysPerWeek <= 3) {
+              hint = `${selectedExercises.length} exercises available`;
+            } else if (daysPerWeek === 4) {
+              const needsUpper = upper < exPerSession * 2;
+              const needsLower = lower < exPerSession * 2;
+              hint = `Upper: ${upper} · Lower: ${lower}`;
+              if (needsUpper || needsLower) {
+                hint = `⚠️ ${hint} — need more ${needsUpper && needsLower ? "upper & lower" : needsUpper ? "upper" : "lower"}`;
+              }
+            } else {
+              const needsPush = push < exPerSession * (daysPerWeek >= 6 ? 2 : 1);
+              const needsPull = pull < exPerSession * (daysPerWeek >= 6 ? 2 : 1);
+              const needsLegs = legs < exPerSession * (daysPerWeek >= 5 ? (daysPerWeek === 5 ? 1 : 2) : 1);
+              hint = `Push: ${push} · Pull: ${pull} · Legs: ${legs}`;
+              if (needsPush || needsPull || needsLegs) {
+                hint = `⚠️ ${hint}`;
+              }
+            }
+            return <div style={{ fontSize: 12, color: C.dim, marginTop: 8, padding: "8px 12px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: `1px solid rgba(255,255,255,0.08)` }}>{hint}</div>;
+          })()}
         </div>
       )}
 
       {/* Step 3 — Summary */}
-      {step === 3 && (
+      {step === 3 && (() => {
+        const previewData = buildProgramData();
+        return (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Program card preview */}
           <div style={{ padding: "18px 16px", borderRadius: 20, border: `1px solid ${programColor}40`, background: `${programColor}08` }}>
@@ -4957,43 +5025,25 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
 
           {/* Day breakdown */}
           <div style={{ fontSize: 12, color: C.dim, fontFamily: C.mono, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Exercise Distribution</div>
-          {Array.from({ length: daysPerWeek }, (_, i) => {
-            const UPPER_CATS = ["Chest", "Back", "Shoulders", "Arms"];
-            const PUSH_CATS = ["Chest", "Shoulders"];
-            const PULL_CATS = ["Back", "Arms"];
-            const split_type = daysPerWeek <= 3 ? "full_body" : daysPerWeek === 4 ? "upper_lower" : "ppl";
-            const fillSlots = (pool) => pool.slice(0, exPerSession);
-            let exList;
-            if (split_type === "full_body") {
-              exList = fillSlots(selectedExercises);
-            } else if (split_type === "upper_lower") {
-              const upper = selectedExercises.filter(e => UPPER_CATS.includes(e.category));
-              const lower = selectedExercises.filter(e => !UPPER_CATS.includes(e.category));
-              exList = fillSlots(i % 2 === 0 ? (upper.length > 0 ? upper : selectedExercises) : (lower.length > 0 ? lower : selectedExercises));
-            } else {
-              const push = selectedExercises.filter(e => PUSH_CATS.includes(e.category));
-              const pull = selectedExercises.filter(e => PULL_CATS.includes(e.category));
-              const legs = selectedExercises.filter(e => e.category === "Legs");
-              const pplCycle = [push.length > 0 ? push : selectedExercises, pull.length > 0 ? pull : selectedExercises, legs.length > 0 ? legs : selectedExercises];
-              exList = fillSlots(pplCycle[i % 3]);
-            }
-            const dayLabel = (daysPerWeek <= 3 ? ["Full Body A","Full Body B","Full Body C"] : daysPerWeek === 4 ? ["Upper A","Lower A","Upper B","Lower B"] : ["Push","Pull","Legs","Push","Pull","Legs"])[i];
-            return (
-              <div key={i} style={{ padding: "12px 14px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}` }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Day {i+1} — {dayLabel}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {exList.map((ex, si) => (
-                    <span key={si} style={{ padding: "3px 8px", borderRadius: 8, background: `${programColor}15`, color: programColor, fontSize: 11, fontFamily: C.mono }}>{ex.icon} {ex.name}</span>
-                  ))}
-                  {exList.length === 0 && <span style={{ fontSize: 12, color: C.dim }}>No exercises assigned</span>}
-                </div>
+          {previewData.days.map((day, i) => (
+            <div key={i} style={{ padding: "12px 14px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>Day {i+1} — {day.name}</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {day.exercises.map((ex, si) => {
+                  const exData = selectedExercises.find(e => e.name === ex.exercise_name);
+                  return (
+                    <span key={si} style={{ padding: "3px 8px", borderRadius: 8, background: `${programColor}15`, color: programColor, fontSize: 11, fontFamily: C.mono }}>{exData?.icon || "💪"} {ex.exercise_name}</span>
+                  );
+                })}
+                {day.exercises.length === 0 && <span style={{ fontSize: 12, color: C.dim }}>No exercises assigned</span>}
               </div>
-            );
-          })}
+            </div>
+          ))}
 
           {error && <div style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(255,80,80,0.1)", border: "1px solid rgba(255,80,80,0.3)", color: "#FF6B6B", fontSize: 13 }}>{error}</div>}
         </div>
-      )}
+        );
+      })()}
 
       {/* Navigation buttons */}
       <div style={{ display: "flex", gap: 10, marginTop: 28 }}>

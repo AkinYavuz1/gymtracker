@@ -22,7 +22,7 @@ npm run setup            # Show setup instructions
 **gAIns** is an AI-powered gym tracking app with three layers:
 
 ### Frontend (React + Vite)
-- **src/App.jsx**: Single monolithic component file (~6316 lines) containing all screens, state, and logic
+- **src/App.jsx**: Single monolithic component file (~6719 lines) containing all screens, state, and logic
 - **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (1144 lines)
 - **src/lib/programEngine.js**: Workout program generation and scheduling logic (345 lines)
 - **src/lib/notifications.js**: Push notification setup and scheduling via APNs/FCM (343 lines)
@@ -228,6 +228,6 @@ Capacitor 8 requires Java 21 but system has Java 17. Fix by patching these two f
 ## File Size Reference
 
 See `FILEMAP.md` for authoritative current line counts. Approximate sizes:
-- `src/App.jsx`: ~6316 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
+- `src/App.jsx`: ~6719 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
 - `src/lib/supabase.js`: ~1144 lines
 - `supabase/schema.sql`: ~1092 lines
