@@ -1,9 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: { onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }) },
+// Store session for use by onAuthStateChange callback
+let mockSessionState = null;
+let onAuthStateChangeCallback = null;
+
+vi.mock('../lib/supabase', () => {
+  const supabaseMock = {
+    auth: {
+      onAuthStateChange: vi.fn((callback) => {
+        onAuthStateChangeCallback = callback;
+        // Fire INITIAL_SESSION event on next tick with the mock session
+        setTimeout(() => callback('INITIAL_SESSION', mockSessionState), 0);
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      }),
+    },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       insert: vi.fn().mockReturnThis(),
@@ -13,28 +24,35 @@ vi.mock('../lib/supabase', () => ({
       limit: vi.fn().mockResolvedValue({ data: [], error: null }),
     }),
     rpc: vi.fn().mockResolvedValue({ data: null }),
-  },
-  signUp: vi.fn(),
-  signIn: vi.fn(),
-  signOut: vi.fn().mockResolvedValue({ error: null }),
-  getSession: vi.fn(),
-  getProfile: vi.fn(),
-  updateProfile: vi.fn(),
-  getTemplates: vi.fn().mockResolvedValue([]),
-  getWorkouts: vi.fn().mockResolvedValue([]),
-  getPersonalRecords: vi.fn().mockResolvedValue([]),
-  getVolumeTrend: vi.fn().mockResolvedValue([]),
-  seedDummyData: vi.fn(),
-  getPrograms: vi.fn().mockResolvedValue([]),
-  getActiveEnrollment: vi.fn().mockResolvedValue(null),
-  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
-  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
-  callCoachAPI: vi.fn(),
-  getCustomExercises: vi.fn().mockResolvedValue([]),
-  createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
-  updateCustomExercise: vi.fn().mockResolvedValue({}),
-  deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
-}));
+  };
+
+  return {
+    supabase: supabaseMock,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn().mockResolvedValue({ error: null }),
+    getSession: vi.fn(),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(),
+    getTemplates: vi.fn().mockResolvedValue([]),
+    getWorkouts: vi.fn().mockResolvedValue([]),
+    getPersonalRecords: vi.fn().mockResolvedValue([]),
+    getVolumeTrend: vi.fn().mockResolvedValue([]),
+    seedDummyData: vi.fn(),
+    getPrograms: vi.fn().mockResolvedValue([]),
+    getActiveEnrollment: vi.fn().mockResolvedValue(null),
+    getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+    updateScheduledWorkout: vi.fn().mockResolvedValue({}),
+    callCoachAPI: vi.fn(),
+    getCustomExercises: vi.fn().mockResolvedValue([]),
+    createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
+    updateCustomExercise: vi.fn().mockResolvedValue({}),
+    deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
+    logLoginEvent: vi.fn(),
+    logPageEvent: vi.fn(),
+    setSessionCache: vi.fn(),
+  };
+});
 
 vi.mock('../lib/offlineStorage', () => ({
   getPendingCount: vi.fn().mockReturnValue(0),
@@ -57,6 +75,7 @@ const mockSession = {
 describe('ProfileModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue({
       id: 'user-1', name: 'Test User', plan: 'pro', onboarding_complete: true, created_at: '2025-01-01T00:00:00Z',
@@ -173,10 +192,12 @@ describe('ProfileModal', () => {
 
   it('uses email prefix as name when no name set', async () => {
     // Override session to have no full_name, so it falls back to email prefix
-    getSession.mockResolvedValue({
+    const sessionWithNoName = {
       user: { id: 'user-1', email: 'test@example.com', user_metadata: {} },
       access_token: 'tok',
-    });
+    };
+    mockSessionState = sessionWithNoName;
+    getSession.mockResolvedValue(sessionWithNoName);
     getProfile.mockResolvedValue({
       id: 'user-1', name: null, plan: 'free', onboarding_complete: true, created_at: '2025-01-01T00:00:00Z',
     });

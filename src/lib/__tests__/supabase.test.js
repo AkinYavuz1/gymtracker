@@ -41,7 +41,7 @@ import {
   signUp, signIn, signOut, getSession, getUser, signInWithGoogle,
   getProfile, updateProfile, getTemplates, getWorkouts, getPersonalRecords,
   getWeeklyStats, getVolumeTrend, checkAIQuota, callCoachAPI, seedDummyData,
-  reduceSetsFutureWorkouts,
+  reduceSetsFutureWorkouts, setSessionCache,
 } from '../supabase';
 
 // Helper to reset the chainable mock
@@ -63,9 +63,7 @@ describe('supabase.js', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupChainableMock();
-    mockAuth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1', email: 'test@test.com' }, access_token: 'tok-123' } },
-    });
+    setSessionCache({ user: { id: 'user-1', email: 'test@test.com' }, access_token: 'tok-123' });
     mockAuth.getUser.mockResolvedValue({
       data: { user: { id: 'user-1' } },
     });
@@ -115,7 +113,7 @@ describe('supabase.js', () => {
     });
 
     it('getSession returns null when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const session = await getSession();
       expect(session).toBeNull();
     });
@@ -138,7 +136,7 @@ describe('supabase.js', () => {
 
   describe('Data helpers', () => {
     it('getProfile returns null when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getProfile();
       expect(result).toBeNull();
     });
@@ -152,7 +150,7 @@ describe('supabase.js', () => {
     });
 
     it('updateProfile returns null when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await updateProfile({ name: 'New' });
       expect(result).toBeNull();
     });
@@ -195,7 +193,7 @@ describe('supabase.js', () => {
     });
 
     it('getWeeklyStats returns null without session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getWeeklyStats();
       expect(result).toBeNull();
     });
@@ -245,6 +243,9 @@ describe('supabase.js', () => {
     });
 
     it('sends POST request to coach edge function', async () => {
+      mockAuth.getSession.mockResolvedValueOnce({
+        data: { session: { user: { id: 'user-1', email: 'test@test.com' }, access_token: 'tok-123', expires_at: Math.floor(Date.now() / 1000) + 3600 } },
+      });
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({ text: 'Great!', cost_usd: 0.001 }),
@@ -263,6 +264,9 @@ describe('supabase.js', () => {
     });
 
     it('throws error on non-ok response', async () => {
+      mockAuth.getSession.mockResolvedValueOnce({
+        data: { session: { user: { id: 'user-1' }, access_token: 'tok-123', expires_at: Math.floor(Date.now() / 1000) + 3600 } },
+      });
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
         ok: false,
         json: () => Promise.resolve({ error: 'Quota exceeded' }),
@@ -271,6 +275,9 @@ describe('supabase.js', () => {
     });
 
     it('throws generic error when no error field', async () => {
+      mockAuth.getSession.mockResolvedValueOnce({
+        data: { session: { user: { id: 'user-1' }, access_token: 'tok-123', expires_at: Math.floor(Date.now() / 1000) + 3600 } },
+      });
       vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
         ok: false,
         status: 500,
@@ -282,7 +289,7 @@ describe('supabase.js', () => {
 
   describe('seedDummyData', () => {
     it('does nothing when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await seedDummyData();
       expect(mockClient.from).not.toHaveBeenCalled();
     });
@@ -297,7 +304,7 @@ describe('supabase.js', () => {
 
   describe('reduceSetsFutureWorkouts', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(reduceSetsFutureWorkouts('sw-1')).rejects.toThrow('Not authenticated');
     });
 

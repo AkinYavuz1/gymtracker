@@ -28,7 +28,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => mockClient),
 }));
 
-import { getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from '../supabase';
+import { getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise, setSessionCache } from '../supabase';
 
 function setupChainableMock() {
   mockQueryBuilder.select.mockReturnValue(mockQueryBuilder);
@@ -49,12 +49,13 @@ describe('Custom Exercise helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupChainableMock();
-    mockAuth.getSession.mockResolvedValue(mockSession);
+    // Set up session cache with proper format for getSession() to return
+    setSessionCache({ user: { id: 'user-1' }, access_token: 'tok' });
   });
 
   describe('getCustomExercises', () => {
     it('returns empty array when there is no session', async () => {
-      mockAuth.getSession.mockResolvedValue({ data: { session: null } });
+      setSessionCache(null);
       const result = await getCustomExercises();
       expect(result).toEqual([]);
     });
@@ -81,7 +82,7 @@ describe('Custom Exercise helpers', () => {
 
   describe('createCustomExercise', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValue({ data: { session: null } });
+      setSessionCache(null);
       await expect(createCustomExercise({ name: 'Test' })).rejects.toThrow('Not authenticated');
     });
 

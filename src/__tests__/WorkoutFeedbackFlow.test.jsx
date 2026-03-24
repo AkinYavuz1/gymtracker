@@ -6,9 +6,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: { onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }) },
+let mockSessionState = null;
+let onAuthStateChangeCallback = null;
+
+vi.mock('../lib/supabase', () => {
+  const supabaseMock = {
+    auth: {
+      onAuthStateChange: vi.fn((callback) => {
+        onAuthStateChangeCallback = callback;
+        setTimeout(() => callback('INITIAL_SESSION', mockSessionState), 0);
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      }),
+    },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       insert: vi.fn().mockReturnThis(),
@@ -19,34 +28,41 @@ vi.mock('../lib/supabase', () => ({
       limit: vi.fn().mockResolvedValue({ data: [], error: null }),
     }),
     rpc: vi.fn().mockResolvedValue({ data: null }),
-  },
-  signUp: vi.fn(),
-  signIn: vi.fn(),
-  signOut: vi.fn().mockResolvedValue({ error: null }),
-  getSession: vi.fn(),
-  getProfile: vi.fn(),
-  updateProfile: vi.fn(),
-  getTemplates: vi.fn().mockResolvedValue([]),
-  getWorkouts: vi.fn().mockResolvedValue([]),
-  getWorkoutSets: vi.fn().mockResolvedValue([]),
-  getPersonalRecords: vi.fn().mockResolvedValue([]),
-  getVolumeTrend: vi.fn().mockResolvedValue([]),
-  seedDummyData: vi.fn(),
-  getPrograms: vi.fn().mockResolvedValue([]),
-  getActiveEnrollment: vi.fn().mockResolvedValue(null),
-  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
-  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
-  callCoachAPI: vi.fn(),
-  getCustomExercises: vi.fn().mockResolvedValue([]),
-  createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
-  updateCustomExercise: vi.fn().mockResolvedValue({}),
-  deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
-  reduceSetsFutureWorkouts: vi.fn().mockResolvedValue(undefined),
-  savePumpRating: vi.fn().mockResolvedValue(undefined),
-  saveDifficultyRating: vi.fn().mockResolvedValue(undefined),
-  saveSorenessRatings: vi.fn().mockResolvedValue(undefined),
-  applyDifficultyToFutureWorkouts: vi.fn().mockResolvedValue(undefined),
-}));
+  };
+
+  return {
+    supabase: supabaseMock,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn().mockResolvedValue({ error: null }),
+    getSession: vi.fn(),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(),
+    getTemplates: vi.fn().mockResolvedValue([]),
+    getWorkouts: vi.fn().mockResolvedValue([]),
+    getWorkoutSets: vi.fn().mockResolvedValue([]),
+    getPersonalRecords: vi.fn().mockResolvedValue([]),
+    getVolumeTrend: vi.fn().mockResolvedValue([]),
+    seedDummyData: vi.fn(),
+    getPrograms: vi.fn().mockResolvedValue([]),
+    getActiveEnrollment: vi.fn().mockResolvedValue(null),
+    getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+    updateScheduledWorkout: vi.fn().mockResolvedValue({}),
+    callCoachAPI: vi.fn(),
+    getCustomExercises: vi.fn().mockResolvedValue([]),
+    createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
+    updateCustomExercise: vi.fn().mockResolvedValue({}),
+    deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
+    reduceSetsFutureWorkouts: vi.fn().mockResolvedValue(undefined),
+    savePumpRating: vi.fn().mockResolvedValue(undefined),
+    saveDifficultyRating: vi.fn().mockResolvedValue(undefined),
+    saveSorenessRatings: vi.fn().mockResolvedValue(undefined),
+    applyDifficultyToFutureWorkouts: vi.fn().mockResolvedValue(undefined),
+    logLoginEvent: vi.fn(),
+    logPageEvent: vi.fn(),
+    setSessionCache: vi.fn(),
+  };
+});
 
 vi.mock('../lib/offlineStorage', () => ({
   getPendingCount: vi.fn().mockReturnValue(0),
@@ -129,6 +145,7 @@ async function navigateToCoach() {
 describe('Workout completion flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue(mockProfile);
   });
@@ -229,12 +246,14 @@ describe('Workout completion flow', () => {
 describe('Error boundaries and resilience', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue(mockProfile);
   });
 
   describe('session expiry', () => {
     it('shows auth screen when getSession returns null on mount', async () => {
+      mockSessionState = null;
       getSession.mockResolvedValue(null);
       render(<App />);
       await waitFor(() => {
@@ -245,6 +264,7 @@ describe('Error boundaries and resilience', () => {
     });
 
     it('shows auth screen when getProfile returns null (profile fetch fails)', async () => {
+      mockSessionState = null;
       getProfile.mockResolvedValue(null);
       render(<App />);
       await waitFor(() => {

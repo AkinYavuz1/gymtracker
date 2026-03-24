@@ -1,9 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-vi.mock('../lib/supabase', () => ({
-  supabase: {
-    auth: { onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } }) },
+let mockSessionState = null;
+let onAuthStateChangeCallback = null;
+
+vi.mock('../lib/supabase', () => {
+  const supabaseMock = {
+    auth: {
+      onAuthStateChange: vi.fn((callback) => {
+        onAuthStateChangeCallback = callback;
+        setTimeout(() => callback('INITIAL_SESSION', mockSessionState), 0);
+        return { data: { subscription: { unsubscribe: vi.fn() } } };
+      }),
+    },
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnThis(),
       insert: vi.fn().mockReturnThis(),
@@ -13,29 +22,36 @@ vi.mock('../lib/supabase', () => ({
       limit: vi.fn().mockResolvedValue({ data: [], error: null }),
     }),
     rpc: vi.fn().mockResolvedValue({ data: null }),
-  },
-  signUp: vi.fn(),
-  signIn: vi.fn(),
-  signOut: vi.fn(),
-  getSession: vi.fn(),
-  getProfile: vi.fn(),
-  updateProfile: vi.fn(),
-  getTemplates: vi.fn().mockResolvedValue([]),
-  getWorkouts: vi.fn().mockResolvedValue([]),
-  getWorkoutSets: vi.fn().mockResolvedValue([]),
-  getPersonalRecords: vi.fn().mockResolvedValue([]),
-  getVolumeTrend: vi.fn().mockResolvedValue([]),
-  seedDummyData: vi.fn(),
-  getPrograms: vi.fn().mockResolvedValue([]),
-  getActiveEnrollment: vi.fn().mockResolvedValue(null),
-  getScheduledWorkouts: vi.fn().mockResolvedValue([]),
-  updateScheduledWorkout: vi.fn().mockResolvedValue({}),
-  callCoachAPI: vi.fn(),
-  getCustomExercises: vi.fn().mockResolvedValue([]),
-  createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
-  updateCustomExercise: vi.fn().mockResolvedValue({}),
-  deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
-}));
+  };
+
+  return {
+    supabase: supabaseMock,
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+    signOut: vi.fn(),
+    getSession: vi.fn(),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(),
+    getTemplates: vi.fn().mockResolvedValue([]),
+    getWorkouts: vi.fn().mockResolvedValue([]),
+    getWorkoutSets: vi.fn().mockResolvedValue([]),
+    getPersonalRecords: vi.fn().mockResolvedValue([]),
+    getVolumeTrend: vi.fn().mockResolvedValue([]),
+    seedDummyData: vi.fn(),
+    getPrograms: vi.fn().mockResolvedValue([]),
+    getActiveEnrollment: vi.fn().mockResolvedValue(null),
+    getScheduledWorkouts: vi.fn().mockResolvedValue([]),
+    updateScheduledWorkout: vi.fn().mockResolvedValue({}),
+    callCoachAPI: vi.fn(),
+    getCustomExercises: vi.fn().mockResolvedValue([]),
+    createCustomExercise: vi.fn().mockResolvedValue({ id: 'cx-1' }),
+    updateCustomExercise: vi.fn().mockResolvedValue({}),
+    deleteCustomExercise: vi.fn().mockResolvedValue(undefined),
+    logLoginEvent: vi.fn(),
+    logPageEvent: vi.fn(),
+    setSessionCache: vi.fn(),
+  };
+});
 
 vi.mock('../lib/offlineStorage', () => ({
   getPendingCount: vi.fn().mockReturnValue(0),
@@ -62,6 +78,7 @@ const mockProfileData = {
 describe('HistoryScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue(mockProfileData);
     getPersonalRecords.mockResolvedValue([]);
@@ -142,6 +159,7 @@ describe('HistoryScreen', () => {
 describe('StatsScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue(mockProfileData);
     getWorkouts.mockResolvedValue([]);
@@ -226,6 +244,7 @@ describe('StatsScreen', () => {
 describe('PRScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSessionState = mockSession;
     getSession.mockResolvedValue(mockSession);
     getProfile.mockResolvedValue(mockProfileData);
     getWorkouts.mockResolvedValue([]);

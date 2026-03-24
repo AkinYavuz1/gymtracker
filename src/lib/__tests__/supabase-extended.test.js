@@ -64,6 +64,7 @@ import {
   deleteUserProgram,
   getVolumeStandards,
   logPRShare,
+  setSessionCache,
 } from '../supabase';
 
 function setupChainableMock() {
@@ -89,9 +90,7 @@ describe('supabase.js — extended coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setupChainableMock();
-    mockAuth.getSession.mockResolvedValue({
-      data: { session: { user: { id: 'user-1', email: 'test@test.com' }, access_token: 'tok-123' } },
-    });
+    setSessionCache({ user: { id: 'user-1', email: 'test@test.com' }, access_token: 'tok-123' });
   });
 
   // ─── deleteWorkout ──────────────────────────────────────────────────────────
@@ -231,7 +230,7 @@ describe('supabase.js — extended coverage', () => {
     });
 
     it('filters to public programs only when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       mockQueryBuilder.is.mockResolvedValue({ data: [], error: null });
       await getPrograms();
       expect(mockQueryBuilder.is).toHaveBeenCalledWith('user_id', null);
@@ -258,7 +257,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('getActiveEnrollment', () => {
     it('returns null when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getActiveEnrollment();
       expect(result).toBeNull();
     });
@@ -283,7 +282,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('enrollInProgram', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(enrollInProgram('prog-1')).rejects.toThrow('Not authenticated');
     });
 
@@ -353,7 +352,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('getScheduledWorkouts', () => {
     it('returns empty array when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getScheduledWorkouts('2025-03-10', '2025-03-16');
       expect(result).toEqual([]);
     });
@@ -438,7 +437,7 @@ describe('supabase.js — extended coverage', () => {
     ];
 
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(generateSchedule('e-1', programDays, '2025-03-10', {})).rejects.toThrow('Not authenticated');
     });
 
@@ -521,7 +520,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('savePumpRating', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(savePumpRating('sw-1', 'w-1', 4)).rejects.toThrow('Not authenticated');
     });
 
@@ -547,7 +546,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('saveDifficultyRating', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(saveDifficultyRating('sw-1', 'w-1', 7)).rejects.toThrow('Not authenticated');
     });
 
@@ -573,7 +572,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('saveSorenessRatings', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(saveSorenessRatings('sw-1', { chest: 3 })).rejects.toThrow('Not authenticated');
     });
 
@@ -598,7 +597,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('getRecentFeedback', () => {
     it('returns empty array when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getRecentFeedback([]);
       expect(result).toEqual([]);
     });
@@ -631,7 +630,7 @@ describe('supabase.js — extended coverage', () => {
     });
 
     it('throws when not authenticated for easy rating', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(applyDifficultyToFutureWorkouts('sw-1', 2)).rejects.toThrow('Not authenticated');
     });
 
@@ -756,7 +755,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('saveProgressCheckin', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(saveProgressCheckin({ weight_kg: 80 })).rejects.toThrow('Not authenticated');
     });
 
@@ -782,7 +781,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('getProgressCheckins', () => {
     it('returns empty array when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       const result = await getProgressCheckins();
       expect(result).toEqual([]);
     });
@@ -820,7 +819,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('applyCoachDiffToSchedule', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(applyCoachDiffToSchedule('e-1', 1, [])).rejects.toThrow('Not authenticated');
     });
 
@@ -995,7 +994,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('createUserProgram', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(createUserProgram({ name: 'My Program', days: [] })).rejects.toThrow('Not authenticated');
     });
 
@@ -1049,7 +1048,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('deleteUserProgram', () => {
     it('throws when not authenticated', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await expect(deleteUserProgram('p-1')).rejects.toThrow('Not authenticated');
     });
 
@@ -1120,7 +1119,7 @@ describe('supabase.js — extended coverage', () => {
 
   describe('logPRShare', () => {
     it('does nothing when no session', async () => {
-      mockAuth.getSession.mockResolvedValueOnce({ data: { session: null } });
+      setSessionCache(null);
       await logPRShare({ exercise: 'Bench Press', type: '1rm', weight: 120, reps: 1, e1rm: 120 });
       expect(mockClient.from).not.toHaveBeenCalled();
     });
