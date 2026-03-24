@@ -25,6 +25,21 @@ export const supabase = createClient(
   supabaseAnonKey || 'placeholder'
 );
 
+// ─── Session cache ───────────────────────────────────────────
+// Keeps the last known session in memory so data functions can get user.id
+// without making a network round-trip on every call. Updated by the listener
+// below and by signIn/signOut. This avoids the gotrue Web Lock entirely.
+let _cachedSession = null;
+
+supabase.auth.onAuthStateChange((event, session) => {
+  _cachedSession = session;
+});
+
+// Seed the cache immediately from local storage (sync, no network, no lock).
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (session) _cachedSession = session;
+});
+
 // ─── Auth helpers ───────────────────────────────────────────
 
 export async function signUp(email, password, name) {
@@ -67,14 +82,9 @@ export async function signOut() {
 }
 
 export async function getSession() {
-  // Use getUser() instead of getSession() — getUser() reads the JWT from
-  // storage directly without acquiring the gotrue Web Lock, avoiding the
-  // "Lock broken by steal" contention when many calls fire concurrently.
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  // Return a session-shaped object with just what callers need (user + basic fields).
-  // Callers that need the raw access_token (e.g. callCoachAPI) use getSession() directly.
-  return { user, access_token: null };
+  // Return cached session — no network call, no Web Lock.
+  // Cache is kept fresh by the onAuthStateChange listener above.
+  return _cachedSession;
 }
 
 export async function getUser() {

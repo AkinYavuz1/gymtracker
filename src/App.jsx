@@ -1749,7 +1749,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
       onFinish(detectedPRs);
       return;
     } catch (e) {
-      console.error("Error saving workout:", e);
+      console.error("Error saving workout:", JSON.stringify(e), e?.message, e?.details, e?.hint);
       saveOffline();
       if (e.message === "timeout") {
         alert("Supabase didn't respond in 20s — workout saved locally. Check that your Supabase project is active (free-tier projects pause after inactivity).");
