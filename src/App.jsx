@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
-import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getWorkoutsForExport, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from "./lib/supabase";
+import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from "./lib/supabase";
 import { detectFormat, parseCSV } from "./lib/importParser";
 import { calculateReadinessScore } from "./lib/readinessScore";
 import { isHealthAvailable, requestHealthPermissions, fetchSleepData, fetchHRVData } from "./lib/healthData";
@@ -1294,12 +1294,16 @@ function AuthScreen({ onSignUp, onSignIn, onGoogleSignIn, onLegal }) {
   );
 }
 
+function useMountAnimation() {
+  const [m, setM] = useState(false);
+  useEffect(() => { setM(true); }, []);
+  return m;
+}
+
 // === SECTION: Home / Dashboard ===
 /* ═══ HOME ═══ */
 function HomeScreen({ onStart, onNav, plan, user, profile, onProfileClick, onNavLibrary, workouts = [], prs = [], volumeTrend = [], onDayClick, todayWorkout, onStartScheduled, enrollment }) {
-  const [m, setM] = useState(false);
-
-  useEffect(() => { setM(true); }, []);
+  const m = useMountAnimation();
 
   // Calculate stats from workouts prop
   const weekStart = new Date();
@@ -2554,7 +2558,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
 // === SECTION: History ===
 /* ═══ HISTORY ═══ */
 function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowPricing, userName }) {
-  const [m, setM] = useState(false);
+  const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [expandedWorkouts, setExpandedWorkouts] = useState({});
@@ -2573,8 +2577,6 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
       setConfirmDelete(null);
     }
   };
-
-  useEffect(() => { setM(true); }, []);
 
   // Load all sets for visible workouts
   useEffect(() => {
@@ -2728,7 +2730,7 @@ const MUSCLE_MAP = {
 
 // === SECTION: Week Detail ===
 function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
-  const [m, setM] = useState(false);
+  const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [aiInsight, setAiInsight] = useState(null);
@@ -2755,8 +2757,6 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
 
   const weekWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= weekStart && d < weekEnd; });
   const prevWeekWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= prevWeekStart && d < prevWeekEnd; });
-
-  useEffect(() => { setM(true); }, []);
 
   // Load sets for this week's workouts
   useEffect(() => {
@@ -3079,7 +3079,7 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
 // === SECTION: Day Detail ===
 /* ═══ DAY DETAIL ═══ */
 function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
-  const [m, setM] = useState(false);
+  const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [expandedWorkouts, setExpandedWorkouts] = useState({});
@@ -3092,8 +3092,6 @@ function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
   const dayWorkouts = workouts.filter(wo => { const d = new Date(wo.started_at); return d >= dayStart && d < dayEnd; });
-
-  useEffect(() => { setM(true); }, []);
 
   useEffect(() => {
     (async () => {
@@ -5957,7 +5955,17 @@ export default function GAIns() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        if (event === 'SIGNED_IN') seedDummyData();
+        if (event === 'SIGNED_IN') {
+          seedDummyData();
+          try {
+            const prof = await getProfile();
+            if (prof) {
+              setProfile(prof);
+              if (prof.plan) setPlan(prof.plan);
+            }
+          } catch { /* profile load failed, continue */ }
+          refreshAppData();
+        }
       } else if (event === 'SIGNED_OUT') {
         // Only clear user on explicit sign-out, not transient token failures
         setUser(null);

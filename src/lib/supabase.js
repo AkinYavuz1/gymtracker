@@ -215,15 +215,6 @@ export async function getWorkouts(limit = 10) {
   return data || [];
 }
 
-export async function getWorkoutsForExport(limit = 2000) {
-  const { data, error } = await supabase
-    .from('workouts')
-    .select('*')
-    .order('started_at', { ascending: false })
-    .limit(limit);
-  if (error) console.error('getWorkoutsForExport error:', error);
-  return data || [];
-}
 
 export async function deleteWorkout(workoutId, startedAt) {
   const session = await getSession();
@@ -744,34 +735,48 @@ export async function generateSchedule(enrollmentId, programDays, startDate, set
   return rows.length;
 }
 
-export async function savePumpRating(scheduledWorkoutId, workoutId, rating) {
+async function saveWorkoutFeedback(scheduledWorkoutId, workoutId, feedbackType, data) {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
-  const { error } = await supabase
-    .from('workout_feedback')
-    .insert({
-      user_id: session.user.id,
-      scheduled_workout_id: scheduledWorkoutId,
-      workout_id: workoutId,
-      feedback_type: 'pump',
-      overall_rating: rating,
-    });
+  const { error } = await supabase.from('workout_feedback').insert({
+    user_id: session.user.id,
+    scheduled_workout_id: scheduledWorkoutId,
+    workout_id: workoutId,
+    feedback_type: feedbackType,
+    ...data,
+  });
   if (error) throw error;
 }
 
+export async function savePumpRating(scheduledWorkoutId, workoutId, rating) {
+  return saveWorkoutFeedback(scheduledWorkoutId, workoutId, 'pump', { overall_rating: rating });
+}
+
 export async function saveDifficultyRating(scheduledWorkoutId, workoutId, rating) {
-  const session = await getSession();
-  if (!session?.user) throw new Error('Not authenticated');
-  const { error } = await supabase
-    .from('workout_feedback')
-    .insert({
-      user_id: session.user.id,
-      scheduled_workout_id: scheduledWorkoutId,
-      workout_id: workoutId,
-      feedback_type: 'difficulty',
-      overall_rating: rating,
-    });
-  if (error) throw error;
+  return saveWorkoutFeedback(scheduledWorkoutId, workoutId, 'difficulty', { overall_rating: rating });
+}
+
+async function getCurrentScheduledContext(scheduledWorkoutId) {
+  const { data, error } = await supabase
+    .from('scheduled_workouts')
+    .select('program_day_id, enrollment_id, week_number')
+    .eq('id', scheduledWorkoutId)
+    .single();
+  if (error || !data) return null;
+  return data;
+}
+
+async function getFutureScheduledWorkouts(current) {
+  const { data, error } = await supabase
+    .from('scheduled_workouts')
+    .select('id, prescribed_exercises, week_number')
+    .eq('enrollment_id', current.enrollment_id)
+    .eq('program_day_id', current.program_day_id)
+    .eq('status', 'scheduled')
+    .gt('week_number', current.week_number)
+    .neq('week_number', 5);
+  if (error) return null;
+  return data;
 }
 
 export async function applyDifficultyToFutureWorkouts(scheduledWorkoutId, difficultyRating) {
@@ -781,24 +786,12 @@ export async function applyDifficultyToFutureWorkouts(scheduledWorkoutId, diffic
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
 
-  // Get current workout's context
-  const { data: current, error: fetchErr } = await supabase
-    .from('scheduled_workouts')
-    .select('program_day_id, enrollment_id, week_number')
-    .eq('id', scheduledWorkoutId)
-    .single();
-  if (fetchErr || !current) return;
+  const current = await getCurrentScheduledContext(scheduledWorkoutId);
+  if (!current) return;
 
   // Get future scheduled workouts with same program_day_id (exclude deload week 5)
-  const { data: futureWorkouts, error: futureErr } = await supabase
-    .from('scheduled_workouts')
-    .select('id, prescribed_exercises, week_number')
-    .eq('enrollment_id', current.enrollment_id)
-    .eq('program_day_id', current.program_day_id)
-    .eq('status', 'scheduled')
-    .gt('week_number', current.week_number)
-    .neq('week_number', 5);
-  if (futureErr || !futureWorkouts?.length) return;
+  const futureWorkouts = await getFutureScheduledWorkouts(current);
+  if (!futureWorkouts?.length) return;
 
   const roundToQuarter = (v) => Math.round(v * 4) / 4;
   const isEasy = difficultyRating <= 3;
@@ -833,22 +826,11 @@ export async function reduceSetsFutureWorkouts(scheduledWorkoutId, incompleteExe
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
 
-  const { data: current, error: fetchErr } = await supabase
-    .from('scheduled_workouts')
-    .select('program_day_id, enrollment_id, week_number')
-    .eq('id', scheduledWorkoutId)
-    .single();
-  if (fetchErr || !current) return;
+  const current = await getCurrentScheduledContext(scheduledWorkoutId);
+  if (!current) return;
 
-  const { data: futureWorkouts, error: futureErr } = await supabase
-    .from('scheduled_workouts')
-    .select('id, prescribed_exercises, week_number')
-    .eq('enrollment_id', current.enrollment_id)
-    .eq('program_day_id', current.program_day_id)
-    .eq('status', 'scheduled')
-    .gt('week_number', current.week_number)
-    .neq('week_number', 5);
-  if (futureErr || !futureWorkouts?.length) return;
+  const futureWorkouts = await getFutureScheduledWorkouts(current);
+  if (!futureWorkouts?.length) return;
 
   const incompleteSet = incompleteExerciseNames
     ? new Set(incompleteExerciseNames.map(n => n.toLowerCase()))
@@ -868,18 +850,9 @@ export async function reduceSetsFutureWorkouts(scheduledWorkoutId, incompleteExe
   }
 }
 
+
 export async function saveSorenessRatings(scheduledWorkoutId, muscleRatings) {
-  const session = await getSession();
-  if (!session?.user) throw new Error('Not authenticated');
-  const { error } = await supabase
-    .from('workout_feedback')
-    .insert({
-      user_id: session.user.id,
-      scheduled_workout_id: scheduledWorkoutId,
-      feedback_type: 'soreness',
-      muscle_ratings: muscleRatings,
-    });
-  if (error) throw error;
+  return saveWorkoutFeedback(scheduledWorkoutId, null, 'soreness', { muscle_ratings: muscleRatings });
 }
 
 export async function getRecentFeedback(muscleGroups) {
