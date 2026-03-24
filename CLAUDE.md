@@ -25,7 +25,7 @@ npm run setup            # Show setup instructions
 - **src/App.jsx**: Single monolithic component file (~6719 lines) containing all screens, state, and logic
 - **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (1144 lines)
 - **src/lib/programEngine.js**: Workout program generation and scheduling logic (345 lines)
-- **src/lib/notifications.js**: Push notification setup and scheduling via APNs/FCM (343 lines)
+- **src/lib/notifications.js**: Push notification setup and scheduling via APNs/FCM (465 lines) — includes `sendPushNotification()` and `setNotificationActionHandler()` for app-side triggers
 - **src/lib/healthData.js**: Unified Apple Health / Google Fit abstraction — sleep, HRV data fetching (130 lines)
 - **src/lib/readinessScore.js**: Pure readiness score calculation and score band logic (82 lines)
 - **src/lib/exerciseGifs.js**: Exercise GIF/animation data (106 lines)
@@ -38,11 +38,12 @@ npm run setup            # Show setup instructions
 ### Backend (Supabase)
 - **Database**: PostgreSQL with RLS (Row Level Security) policies
 - **Auth**: Built-in email/Google/Apple auth via Supabase
-- **Edge Functions**: Four Deno functions deployed via Supabase CLI:
+- **Edge Functions**: Five Deno functions deployed via Supabase CLI:
   - `coach/index.ts` (257 lines): AI Coach endpoint using Claude Haiku with prompt caching
   - `stripe-webhook/index.ts` (126 lines): Subscription webhook handler
   - `create-checkout/index.ts` (128 lines): Creates Stripe checkout sessions
   - `send-notification/index.ts` (411 lines): Push notifications via APNs/FCM
+  - `schedule-notifications/index.ts` (268 lines): Hourly cron job for scheduled notifications (workout reminders, weekly summary, AI tips, streak alerts)
 - **Shared**: `_shared/cors.ts` for CORS headers
 
 ### AI Integration
@@ -140,6 +141,21 @@ await logPageEvent(userId, screenName, previousScreen, platform, appVersion);
    - Calls Claude Haiku with prompt caching
    - Returns response + token costs
 4. App displays response and deducts from user's daily quota
+
+### Push Notifications
+6 notification types are wired up via 2 delivery mechanisms:
+
+**App-side (immediate/on-event)**:
+- **PR Celebrations**: Triggered when `onFinish()` in WorkoutScreen detects new PRs. Sends random message from `PR_CELEBRATION_MESSAGES` pool with top PR details.
+- **Rest Day Alerts**: Set when post-workout difficulty ≥ 9. Flag stored in `gains_rest_day_pending`. Sent on next app open if yesterday's date.
+
+**Server-side (hourly cron, `schedule-notifications` edge function)**:
+- **Workout Reminders** (9am UTC): Queries `scheduled_workouts` with today's date, sends to each user.
+- **Weekly Summary** (Sunday 7pm UTC): Sends to all users with active subscriptions, deep-links to `weekDetail`.
+- **AI Coach Tips** (Wednesday noon UTC): Rotates through 4 tips (recovery, form, tracking, nutrition).
+- **Streak Alerts** (Friday 6pm UTC): Counts workouts since Monday, sends count to users with ≥1 workout this week.
+
+All notifications respect user preferences in `notification_preferences` table (per-user toggles). Deep-link data passed via `data.screen` opens the corresponding app screen.
 
 ### Adding Features
 - **New screens**: Add case to `currentScreen` state and render conditionally in `App.jsx`; update FILEMAP.md and CLAUDE.md with new section info

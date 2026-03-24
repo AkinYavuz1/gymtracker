@@ -33,7 +33,7 @@ Use `grep -n "=== SECTION:"` on App.jsx to jump directly to a screen.
 - `main.jsx` (9 lines) — React entry point, renders `<App>`
 - `lib/supabase.js` (1144 lines) — Supabase client, auth helpers, data queries, `callCoachAPI()`, custom exercise CRUD
 - `lib/programEngine.js` (345 lines) — Workout program generation and scheduling logic
-- `lib/notifications.js` (343 lines) — Push notification setup and scheduling (APNs/FCM)
+- `lib/notifications.js` (465 lines) — Push notification setup and scheduling (APNs/FCM); `sendPushNotification()` and `setNotificationActionHandler()` for app-side triggers
 - `lib/exerciseGifs.js` (106 lines) — Static map of exercise name → GIF URL
 - `lib/healthData.js` (130 lines) — Unified Apple Health / Google Fit abstraction (sleep, HRV data fetching)
 - `lib/readinessScore.js` (82 lines) — Pure readiness score calculation and score band logic
@@ -49,6 +49,7 @@ Use `grep -n "=== SECTION:"` on App.jsx to jump directly to a screen.
 - `functions/stripe-webhook/index.ts` (126 lines) — Webhook: validates Stripe events, updates user plan
 - `functions/create-checkout/index.ts` (128 lines) — Creates Stripe checkout session for plan upgrades
 - `functions/send-notification/index.ts` (411 lines) — Sends push notifications via APNs/FCM
+- `functions/schedule-notifications/index.ts` (268 lines) — Hourly cron job: workout reminders, weekly summary, AI tips, streak alerts
 - `functions/_shared/cors.ts` (11 lines) — CORS headers shared across edge functions
 
 ## Root config

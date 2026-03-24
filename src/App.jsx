@@ -8,7 +8,7 @@ import { queueWorkout, syncPendingWorkouts, getPendingCount } from "./lib/offlin
 import { getExerciseGif } from "./lib/exerciseGifs";
 import ExerciseAnimation from "./lib/exerciseAnimations";
 import { getAnimalComparison, getAnimalStyle } from "./lib/animalWeights";
-import { registerServiceWorker, getNotificationPermission, checkNativePermission, requestNotificationPermission, subscribeToPush, unsubscribeFromPush, getCurrentSubscription, getNotificationPreferences, updateNotificationPreferences } from "./lib/notifications";
+import { registerServiceWorker, getNotificationPermission, checkNativePermission, requestNotificationPermission, subscribeToPush, unsubscribeFromPush, getCurrentSubscription, getNotificationPreferences, updateNotificationPreferences, sendPushNotification, setNotificationActionHandler } from "./lib/notifications";
 import { Capacitor } from "@capacitor/core";
 
 /* ═══ API CONFIG ═══ */
@@ -5865,6 +5865,13 @@ export default function GAIns() {
   const ANALYTICS_PLATFORM = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web';
   const ANALYTICS_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
 
+  const PR_CELEBRATION_MESSAGES = [
+    (ex, kg) => `Proud of you for hitting ${kg}kg on ${ex} today! 🏆`,
+    (ex, kg) => `${kg}kg on ${ex} — that's a new personal best! Keep going 💪`,
+    (ex, kg) => `NEW PR! ${ex} at ${kg}kg. You're getting stronger every session 🔥`,
+    (ex, kg) => `${ex}: ${kg}kg. Beast mode activated. We see you! 🦁`,
+  ];
+
   const [activeTheme, setActiveTheme] = useState(
     () => localStorage.getItem("theme") || "aurora"
   );
@@ -5986,6 +5993,28 @@ export default function GAIns() {
         // Returning user: app opened with existing session
         if (session?.user) {
           logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
+          // Check rest day flag and send notification if applicable
+          const restDayPending = localStorage.getItem('gains_rest_day_pending');
+          if (restDayPending) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            if (restDayPending === yesterdayStr) {
+              sendPushNotification(
+                'Rest Day Reminder 🛌',
+                'You crushed it yesterday! Today is a perfect rest day — let your muscles recover.',
+                'rest-day',
+                {}
+              );
+            }
+            if (restDayPending <= yesterdayStr) {
+              localStorage.removeItem('gains_rest_day_pending');
+            }
+          }
+          // Register deep-link handler for notifications
+          setNotificationActionHandler((data) => {
+            if (data.screen) setScreen(data.screen);
+          });
           try {
             const prof = await getProfile();
             if (!prof) {
@@ -6355,6 +6384,10 @@ export default function GAIns() {
       if (difficulty > 0) {
         try { await saveDifficultyRating(scheduledWorkoutId, workoutId, difficulty); } catch (e) { console.error("Error saving difficulty:", e); }
         try { await applyDifficultyToFutureWorkouts(scheduledWorkoutId, difficulty); } catch (e) { console.error("Error applying difficulty adjustments:", e); }
+        // Flag for rest day notification on next app open if very brutal
+        if (difficulty >= 9) {
+          localStorage.setItem('gains_rest_day_pending', new Date().toISOString().split('T')[0]);
+        }
       }
     }
     setShowPostFeedback(null);
@@ -6432,7 +6465,20 @@ export default function GAIns() {
             setShowPostFeedback({ scheduledWorkoutId: tpl.scheduledWorkoutId, workoutId: null });
           }
           refreshAppData();
-          if (prs && prs.length > 0) { navigator.vibrate?.([50, 30, 100]); setCelebrationPRs(prs); }
+          if (prs && prs.length > 0) {
+            navigator.vibrate?.([50, 30, 100]);
+            setCelebrationPRs(prs);
+            // Send push notification for top PR
+            const top = prs[0];
+            const kg = top.weight || top.estimated_1rm || '?';
+            const msgFn = PR_CELEBRATION_MESSAGES[Math.floor(Math.random() * PR_CELEBRATION_MESSAGES.length)];
+            sendPushNotification(
+              'New Personal Record! 🏆',
+              msgFn(top.exercise_name, kg),
+              'pr-celebration',
+              { screen: 'prs' }
+            );
+          }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
         {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} onDeleteProgram={async (id) => { try { await deleteUserProgram(id); refreshAppData(); } catch (e) { console.error(e); } }} />}

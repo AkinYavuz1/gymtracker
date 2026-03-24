@@ -411,6 +411,32 @@ export async function updateNotificationPreferences(prefs) {
   if (error) console.error("Update notification prefs error:", error);
 }
 
+// ─── Sending Push Notifications ───────────────────────────────
+
+export async function sendPushNotification(title, body, tag, data = {}, userId = null) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return;
+    const uid = userId || session.user.id;
+    await supabase.functions.invoke('send-notification', {
+      body: { user_id: uid, title, body, tag, data },
+      headers: { Authorization: `Bearer ${session.access_token}` }
+    });
+  } catch (e) {
+    console.error('sendPushNotification error:', e);
+  }
+}
+
+export function setNotificationActionHandler(callback) {
+  if (!Capacitor.isNativePlatform()) return;
+  // PushNotifications is already imported at top (lazy-loaded)
+  if (!PushNotifications) return;
+  PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+    const data = action.notification.data || {};
+    callback(data);
+  });
+}
+
 // ─── Utility ─────────────────────────────────────────────────
 
 function urlBase64ToUint8Array(base64String) {

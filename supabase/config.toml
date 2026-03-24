@@ -24,3 +24,6 @@ verify_jwt = false
 
 [functions.create-checkout]
 verify_jwt = false
+
+[functions.schedule-notifications]
+verify_jwt = false
