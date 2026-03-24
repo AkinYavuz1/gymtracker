@@ -67,8 +67,14 @@ export async function signOut() {
 }
 
 export async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session;
+  // Use getUser() instead of getSession() — getUser() reads the JWT from
+  // storage directly without acquiring the gotrue Web Lock, avoiding the
+  // "Lock broken by steal" contention when many calls fire concurrently.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  // Return a session-shaped object with just what callers need (user + basic fields).
+  // Callers that need the raw access_token (e.g. callCoachAPI) use getSession() directly.
+  return { user, access_token: null };
 }
 
 export async function getUser() {
@@ -1113,7 +1119,7 @@ export async function getVolumeStandards(daysPerWeek) {
 // ─── Custom Exercises ────────────────────────────────────────
 
 export async function getCustomExercises() {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSession();
   if (!session) return [];
   const { data, error } = await supabase
     .from('custom_exercises')
@@ -1125,7 +1131,7 @@ export async function getCustomExercises() {
 }
 
 export async function createCustomExercise(data) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSession();
   if (!session) throw new Error('Not authenticated');
   const { data: result, error } = await supabase
     .from('custom_exercises')
@@ -1137,7 +1143,7 @@ export async function createCustomExercise(data) {
 }
 
 export async function updateCustomExercise(id, data) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSession();
   if (!session) throw new Error('Not authenticated');
   const { data: result, error } = await supabase
     .from('custom_exercises')
@@ -1151,7 +1157,7 @@ export async function updateCustomExercise(id, data) {
 }
 
 export async function deleteCustomExercise(id) {
-  const { data: { session } } = await supabase.auth.getSession();
+  const session = await getSession();
   if (!session) throw new Error('Not authenticated');
   const { error } = await supabase
     .from('custom_exercises')
