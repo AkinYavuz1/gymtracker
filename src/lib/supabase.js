@@ -1160,3 +1160,22 @@ export async function deleteCustomExercise(id) {
     .eq('user_id', session.user.id);
   if (error) throw error;
 }
+
+export async function logLoginEvent(userId, platform = 'web', appVersion = null) {
+  try {
+    const { error } = await supabase.rpc('log_login_event', {
+      p_user_id: userId, p_platform: platform, p_app_version: appVersion,
+    });
+    if (error) console.error('[analytics] logLoginEvent error:', error);
+  } catch (e) { console.error('[analytics] logLoginEvent exception:', e); }
+}
+
+export async function logPageEvent(userId, screenName, previousScreen = null, platform = 'web', appVersion = null) {
+  try {
+    const { error } = await supabase.from('user_page_events').insert({
+      user_id: userId, screen_name: screenName, previous_screen: previousScreen,
+      platform, app_version: appVersion,
+    });
+    if (error) console.error('[analytics] logPageEvent error:', error);
+  } catch (e) { console.error('[analytics] logPageEvent exception:', e); }
+}

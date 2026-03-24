@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
-import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise } from "./lib/supabase";
+import { signUp, signIn, signInWithGoogle, signOut, resetPassword, updatePassword, getSession, getProfile, updateProfile, seedDummyData, callCoachAPI, getWorkouts, getWorkoutSets, getPersonalRecords, getTemplates, getVolumeTrend, supabase, getPrograms, getActiveEnrollment, enrollInProgram, abandonProgram, getScheduledWorkouts, updateScheduledWorkout, generateSchedule, savePumpRating, saveDifficultyRating, applyDifficultyToFutureWorkouts, reduceSetsFutureWorkouts, saveSorenessRatings, getRecentFeedback, saveProgressCheckin, getProgressCheckins, applyCoachDiffToSchedule, createUserProgram, deleteUserProgram, deleteWorkout, getVolumeStandards, logPRShare, deleteUserAccount, createCheckoutSession, saveReadinessScore, getReadinessScore, importWorkouts, getCustomExercises, createCustomExercise, updateCustomExercise, deleteCustomExercise, logLoginEvent, logPageEvent } from "./lib/supabase";
 import { detectFormat, parseCSV } from "./lib/importParser";
 import { calculateReadinessScore } from "./lib/readinessScore";
 import { isHealthAvailable, requestHealthPermissions, fetchSleepData, fetchHRVData } from "./lib/healthData";
@@ -5814,6 +5814,9 @@ export class ErrorBoundary extends Component {
 // === SECTION: App Root (GAIns) ===
 /* ═══ APP SHELL ═══ */
 export default function GAIns() {
+  const ANALYTICS_PLATFORM = Capacitor.isNativePlatform() ? Capacitor.getPlatform() : 'web';
+  const ANALYTICS_VERSION = import.meta.env.VITE_APP_VERSION || '1.0.0';
+
   const [activeTheme, setActiveTheme] = useState(
     () => localStorage.getItem("theme") || "aurora"
   );
@@ -5926,9 +5929,12 @@ export default function GAIns() {
     // Fallback timeout — never stay stuck on "Loading..."
     const timeout = setTimeout(() => setAuthLoading(false), 5000);
 
-    const checkAuth = async () => {
-      try {
-        const session = await getSession();
+    // Single auth source of truth — onAuthStateChange fires INITIAL_SESSION on
+    // mount for returning users, and SIGNED_IN for fresh logins. No separate
+    // getSession() call to avoid lock contention with gotrue-js.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        // Returning user: app opened with existing session
         if (session?.user) {
           try {
             const prof = await getProfile();
@@ -5939,38 +5945,28 @@ export default function GAIns() {
               setUser(session.user);
               setProfile(prof);
               if (prof.plan) setPlan(prof.plan);
-              // Session is fresh, load data now
               refreshAppData();
+              logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
             }
           } catch {
             // Profile fetch failed due to network — still let user in
             setUser(session.user);
           }
         }
-      } catch {
-        // Session fetch failed — treat as logged out
-      } finally {
         clearTimeout(timeout);
         setAuthLoading(false);
-      }
-    };
-    checkAuth();
-
-    // Listen for OAuth redirects and session changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      } else if (event === 'SIGNED_IN') {
         setUser(session.user);
-        if (event === 'SIGNED_IN') {
-          seedDummyData();
-          try {
-            const prof = await getProfile();
-            if (prof) {
-              setProfile(prof);
-              if (prof.plan) setPlan(prof.plan);
-            }
-          } catch { /* profile load failed, continue */ }
-          refreshAppData();
-        }
+        seedDummyData();
+        try {
+          const prof = await getProfile();
+          if (prof) {
+            setProfile(prof);
+            if (prof.plan) setPlan(prof.plan);
+          }
+        } catch { /* profile load failed, continue */ }
+        refreshAppData();
+        logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
       } else if (event === 'SIGNED_OUT') {
         // Only clear user on explicit sign-out, not transient token failures
         setUser(null);
@@ -6226,6 +6222,9 @@ export default function GAIns() {
   };
 
   const nav = (t, replace) => {
+    if (user) {
+      logPageEvent(user.id, t, screen, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
+    }
     setTab(["home","coach","program","history","stats"].includes(t) ? t : null);
     setScreen(t);
     if (scrollRef.current) scrollRef.current.scrollTop = 0;

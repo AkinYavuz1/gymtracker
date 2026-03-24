@@ -65,6 +65,8 @@ npm run setup            # Show setup instructions
 - `personal_records` — Max lifts with auto-calculated 1RM (Epley formula)
 - `ai_conversations` + `ai_messages` — Chat history and cost tracking per request
 - `programs` + `program_cycles` — Workout programs and enrollment cycles (added via `migration_programs.sql`)
+- `user_login_events` — One row per user per day; tracks `session_count`, `platform`, `app_version` (added via `migration_analytics.sql`)
+- `user_page_events` — Append-only screen navigation log; tracks `screen_name`, `previous_screen`, `platform` (added via `migration_analytics.sql`)
 
 **Plan Limits** (hard-coded in schema):
 - Free: 5 queries/day
@@ -115,6 +117,10 @@ const prs = await getPersonalRecords();
 
 // AI Coach (calls Edge Function)
 const response = await callCoachAPI(prompt, label, conversationId);
+
+// Analytics (fire-and-forget, silently swallowed on error)
+await logLoginEvent(userId, platform, appVersion); // idempotent upsert via RPC
+await logPageEvent(userId, screenName, previousScreen, platform, appVersion);
 ```
 
 ### App Component State
