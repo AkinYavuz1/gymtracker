@@ -24,6 +24,7 @@
     "@capacitor/push-notifications": "^8.0.2",
     "@capacitor/share": "^8.0.1",
     "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
+    "@devmaxime/capacitor-health-connect": "^1.1.0",
     "@supabase/supabase-js": "^2.45.0",
     "@testing-library/dom": "^10.4.1",
     "jspdf": "^4.2.1",

@@ -3945,8 +3945,8 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
           <span style={{ fontSize: 16, color: C.dim }}>→</span>
         </button>
 
-        {/* Health Data */}
-        <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, marginBottom: 12, padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {/* Health Data — only on native platforms */}
+        {isHealthAvailable() && <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, marginBottom: 12, padding: "14px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 18 }}>❤️</span>
             <div>
@@ -3967,7 +3967,7 @@ function ProfileModal({ profile, plan, user, onClose, onLogout, onNotifications,
           ) : (
             <button onClick={onHealthConnect} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: C.accent, color: C.bg, fontSize: 11, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>Connect</button>
           )}
-        </div>
+        </div>}
 
         {/* Redo Onboarding Button */}
         <button
@@ -5738,7 +5738,7 @@ function LegalScreen({ onBack, initialTab = "privacy" }) {
             <p style={{ marginBottom: 16 }}>gAIns is not intended for users under 13. We do not knowingly collect data from children.</p>
 
             <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>8. Contact</div>
-            <p style={{ marginBottom: 4 }}>For privacy questions or data requests, contact us at: privacy@gains.app</p>
+            <p style={{ marginBottom: 4 }}>For privacy questions or data requests, contact us at: hello@gainsai.uk</p>
           </div>
         ) : (
           <div style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, fontFamily: C.font, lineHeight: 1.75 }}>
@@ -5770,7 +5770,7 @@ function LegalScreen({ onBack, initialTab = "privacy" }) {
             <p style={{ marginBottom: 16 }}>We may update these terms. Continued use of the app after changes constitutes acceptance of the revised terms.</p>
 
             <div style={{ fontWeight: 700, color: "#fff", marginBottom: 6 }}>9. Contact</div>
-            <p style={{ marginBottom: 4 }}>For questions about these terms: legal@gains.app</p>
+            <p style={{ marginBottom: 4 }}>For questions about these terms: hello@gainsai.uk</p>
           </div>
         )}
       </div>

@@ -11,7 +11,7 @@ export { calculateReadinessScore, getScoreBand } from './readinessScore';
 
 // Opaque module paths — prevents Vite static analysis from resolving these
 const APPLE_HEALTH_MODULE = ['capacitor', 'apple', 'health'].join('-');
-const HEALTH_CONNECT_MODULE = '@nicenicer/' + 'capacitor-health-connect';
+const HEALTH_CONNECT_MODULE = '@devmaxime/' + 'capacitor-health-connect';
 
 // ─── Platform detection ──────────────────────────────────────
 

@@ -11,7 +11,7 @@ npm run dev              # Start Vite dev server (http://localhost:3000)
 npm run build            # Production build to dist/
 npm run functions:deploy # Deploy Edge Functions (coach + stripe-webhook)
 npm run db:push          # Push schema changes (if linked to Supabase)
-npm run test             # Run Vitest test suite (191 tests)
+npm run test             # Run Vitest test suite (400+ tests)
 npm run test:watch       # Run tests in watch mode
 npm run test:coverage    # Run tests with coverage report
 npm run setup            # Show setup instructions
@@ -22,11 +22,16 @@ npm run setup            # Show setup instructions
 **gAIns** is an AI-powered gym tracking app with three layers:
 
 ### Frontend (React + Vite)
-- **src/App.jsx**: Single monolithic component file (~1286 lines, ~90 KB) containing all screens, state, and logic
-- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (294 lines)
-- **src/lib/exerciseGifs.js**: Exercise GIF/animation data (93 lines)
+- **src/App.jsx**: Single monolithic component file (~6316 lines) containing all screens, state, and logic
+- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (1144 lines)
+- **src/lib/programEngine.js**: Workout program generation and scheduling logic (345 lines)
+- **src/lib/notifications.js**: Push notification setup and scheduling via APNs/FCM (343 lines)
+- **src/lib/healthData.js**: Unified Apple Health / Google Fit abstraction — sleep, HRV data fetching (130 lines)
+- **src/lib/readinessScore.js**: Pure readiness score calculation and score band logic (82 lines)
+- **src/lib/exerciseGifs.js**: Exercise GIF/animation data (106 lines)
 - **src/lib/offlineStorage.js**: Offline caching helpers (87 lines)
-- **src/components/**, **src/screens/**: Component directories (currently empty — reserved for future splits)
+- **src/lib/animalWeights.js**: Static animal weight comparisons for fun UI stats (40 lines)
+- **src/components/**, **src/screens/**: Component directories (reserved for future splits)
 - **src/main.jsx**: React entry point
 - **Styling**: Tailwind CSS + inline styles with consistent theme colors (defined as object `C`)
 
@@ -47,7 +52,7 @@ npm run setup            # Show setup instructions
 
 ### Payments
 - Stripe integration for subscriptions (Free/Pro/Unlimited plans)
-- Plans in `src/App.jsx` (lines 5-9) define pricing and query limits
+- Plans defined in `src/App.jsx` — define pricing and query limits
 - Webhook validates subscription state and updates user plan
 
 ## Database Schema
@@ -59,11 +64,38 @@ npm run setup            # Show setup instructions
 - `workouts` + `workout_sets` — Completed sessions with exercise data
 - `personal_records` — Max lifts with auto-calculated 1RM (Epley formula)
 - `ai_conversations` + `ai_messages` — Chat history and cost tracking per request
+- `programs` + `program_cycles` — Workout programs and enrollment cycles (added via `migration_programs.sql`)
 
 **Plan Limits** (hard-coded in schema):
 - Free: 5 queries/day
 - Pro: 30 queries/day
 - Unlimited: 999 queries/day
+
+## Screens
+
+All screens live in `src/App.jsx`. Use `// === SECTION: X ===` anchors to navigate (see FILEMAP.md for line numbers):
+
+- **Auth** — Login / sign-up
+- **Onboarding** — Multi-step first-run flow
+- **Home / Dashboard** — Weekly KPIs, schedule strip
+- **Workout** — Active session tracking
+- **Template Picker** — Browse and start from templates
+- **Stats** — Charts, volume, muscle breakdown
+- **History** — Past workouts list
+- **Week Detail** — Weekly breakdown with exercises, PRs, AI insights
+- **Day Detail** — Single-day view
+- **Personal Records** — PR tracking
+- **Exercise Library** — Browse exercises, detail modal, custom exercise form
+- **Programs** — Program list and enrollment
+- **Program Onboarding** — Program setup flow
+- **Program Builder** — Build custom programs
+- **Volume Dashboard** — Volume tracking over time
+- **AI Coach** — Chat UI with quota display
+- **Notifications** — Push notification settings
+- **Profile / Settings** — Password change, profile management
+- **Pre/Post Workout Modals** — Check-in and feedback flows
+- **Pricing** — Plan upgrade screen
+- **Legal** — Privacy / terms
 
 ## Development Patterns
 
@@ -104,10 +136,10 @@ const response = await callCoachAPI(prompt, label, conversationId);
 4. App displays response and deducts from user's daily quota
 
 ### Adding Features
-- **New screens**: Add case to `currentScreen` state and render conditionally
+- **New screens**: Add case to `currentScreen` state and render conditionally in `App.jsx`; update FILEMAP.md and CLAUDE.md with new section info
 - **New data queries**: Add function to `supabase.js` following existing pattern
 - **New Edge Function**: Add to `supabase/functions/YOUR_NAME/index.ts`, add to deploy script
-- **Database changes**: Edit `supabase/schema.sql` and run migrations via CLI
+- **Database changes**: Edit `supabase/schema.sql` and run migrations via CLI; add migration SQL file if needed
 
 ## Environment Setup
 
@@ -189,7 +221,7 @@ Capacitor 8 requires Java 21 but system has Java 17. Fix by patching these two f
 
 ## File Size Reference
 
-See `FILEMAP.md` for current line counts. Key files:
-- `src/App.jsx`: ~4957 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
-- `src/lib/supabase.js`: 915 lines
-- `supabase/schema.sql`: 1018 lines
+See `FILEMAP.md` for authoritative current line counts. Approximate sizes:
+- `src/App.jsx`: ~6316 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
+- `src/lib/supabase.js`: ~1144 lines
+- `supabase/schema.sql`: ~1092 lines
