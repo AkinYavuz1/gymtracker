@@ -5957,7 +5957,7 @@ export default function GAIns() {
         setAuthLoading(false);
       } else if (event === 'SIGNED_IN') {
         setUser(session.user);
-        seedDummyData();
+        setTimeout(() => seedDummyData(), 1000);
         try {
           const prof = await getProfile();
           if (prof) {
