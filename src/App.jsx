@@ -336,14 +336,13 @@ function validateExerciseNames(programData, customExercises = []) {
 }
 
 function getExerciseNamesByEquipment(selectedEquipment, customExercises = []) {
+  const eqMap = { Barbell: "Barbell", Dumbbell: "Dumbbell", Cable: "Cable", Machine: "Machine", Bodyweight: "Bodyweight", BW: "Bodyweight" };
   const names = [];
   Object.values(EX_LIB).forEach(cat => cat.forEach(ex => {
-    const eqMap = { Barbell: "Barbell", Dumbbell: "Dumbbell", Cable: "Cable", Machine: "Machine", Bodyweight: "Bodyweight", BW: "Bodyweight" };
     const mapped = eqMap[ex.equipment] || ex.equipment;
     if (selectedEquipment.includes(mapped)) names.push(ex.name);
   }));
   customExercises.forEach(cx => {
-    const eqMap = { Barbell: "Barbell", Dumbbell: "Dumbbell", Cable: "Cable", Machine: "Machine", Bodyweight: "Bodyweight", BW: "Bodyweight" };
     const mapped = eqMap[cx.equipment] || cx.equipment || "Bodyweight";
     if (selectedEquipment.includes(mapped)) names.push(cx.name);
   });
@@ -1932,7 +1931,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
 // === SECTION: Stats ===
 /* ═══ STATS ═══ */
 function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile }) {
-  const [m, setM] = useState(false);
+  const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
   const [period, setPeriod] = useState("4W");
@@ -1941,7 +1940,6 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
   const [expandedPlateaus, setExpandedPlateaus] = useState(false);
 
   useEffect(() => {
-    setM(true);
     const ids = workouts.map(w => w.id).filter(Boolean);
     getWorkoutSets(ids).then(data => { setSets(data); setLoadingSets(false); });
   }, [workouts]);
@@ -3188,10 +3186,8 @@ function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
 // === SECTION: Personal Records ===
 /* ═══ PERSONAL RECORDS ═══ */
 function PRScreen({ onBack, prs = [] }) {
-  const [m, setM] = useState(false);
+  const m = useMountAnimation();
   const [tab, setTab] = useState("1rm");
-
-  useEffect(() => { setM(true); }, []);
 
   const GROUP_ORDER = ["Chest", "Back", "Legs", "Shoulders", "Arms", "Other"];
   const GROUP_COLORS = { Chest: "#FF6B3C", Back: "#3CFFF0", Legs: "#A78BFA", Shoulders: "#47B8FF", Arms: "#F472B6", Other: "#9B98C4" };
@@ -5396,9 +5392,7 @@ function ExerciseLibraryScreen({ onBack, context, onAddToWorkout, customExercise
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [editingCustom, setEditingCustom] = useState(null);
   const [gifState, setGifState] = useState({});
-  const [m, setM] = useState(false);
-
-  useEffect(() => { setM(true); }, []);
+  const m = useMountAnimation();
 
   const muscles = ["All", "Chest", "Back", "Legs", "Shoulders", "Arms", "Core"];
   const equipments = ["All", "Barbell", "Dumbbell", "Cable", "Machine", "Bodyweight"];

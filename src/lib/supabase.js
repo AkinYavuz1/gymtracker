@@ -738,13 +738,14 @@ export async function generateSchedule(enrollmentId, programDays, startDate, set
 async function saveWorkoutFeedback(scheduledWorkoutId, workoutId, feedbackType, data) {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
-  const { error } = await supabase.from('workout_feedback').insert({
+  const row = {
     user_id: session.user.id,
     scheduled_workout_id: scheduledWorkoutId,
-    workout_id: workoutId,
     feedback_type: feedbackType,
     ...data,
-  });
+  };
+  if (workoutId != null) row.workout_id = workoutId;
+  const { error } = await supabase.from('workout_feedback').insert(row);
   if (error) throw error;
 }
 
