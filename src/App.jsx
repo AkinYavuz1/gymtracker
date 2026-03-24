@@ -1633,9 +1633,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
     }
 
     try {
-      // Use cached session (auto-refreshes) instead of getUser() which can 403
-      const session = await getSession();
-      const userId = session?.user?.id || user.id;
+      const userId = user.id;
 
       const timeout = new Promise((_, reject) =>
         setTimeout(() => reject(new Error("timeout")), 20000)
@@ -5936,6 +5934,7 @@ export default function GAIns() {
       if (event === 'INITIAL_SESSION') {
         // Returning user: app opened with existing session
         if (session?.user) {
+          logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
           try {
             const prof = await getProfile();
             if (!prof) {
@@ -5946,7 +5945,6 @@ export default function GAIns() {
               setProfile(prof);
               if (prof.plan) setPlan(prof.plan);
               refreshAppData();
-              logLoginEvent(session.user.id, ANALYTICS_PLATFORM, ANALYTICS_VERSION);
             }
           } catch {
             // Profile fetch failed due to network — still let user in
