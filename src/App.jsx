@@ -6017,14 +6017,14 @@ export default function GAIns() {
           });
           try {
             const prof = await getProfile();
-            if (!prof) {
-              // Session exists but no profile — account was deleted, sign out
-              await signOut();
-            } else {
+            if (prof) {
               setUser(session.user);
               setProfile(prof);
               if (prof.plan) setPlan(prof.plan);
               refreshAppData();
+            } else {
+              // Profile still missing after getProfile() attempted recreation — sign out
+              await signOut();
             }
           } catch {
             // Profile fetch failed due to network — still let user in
@@ -6206,14 +6206,14 @@ export default function GAIns() {
     setDeleteAccountLoading(true);
     try {
       await deleteUserAccount();
-      setDeleteAccountModal(false);
-      setDeleteConfirmText("");
-      handleLogout();
+      // Hard refresh to clear all browser cache (localStorage, IndexedDB, service worker cache, etc.)
+      // This prevents stale data when the user logs back in with the same email
+      window.location.replace(window.location.origin);
     } catch (e) {
       console.error("Delete account error:", e);
       alert("Failed to delete account: " + (e.message || "Unknown error"));
+      setDeleteAccountLoading(false);
     }
-    setDeleteAccountLoading(false);
   };
 
   const needsOnboarding = user && profile && profile.onboarding_complete === false;

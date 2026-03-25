@@ -169,11 +169,32 @@ export async function callCoachAPI(prompt, label, conversationId, options = {}) 
 export async function getProfile() {
   const session = await getSession();
   if (!session?.user) return null;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', session.user.id)
     .single();
+
+  // If profile doesn't exist (user deleted account and logged back in), recreate it
+  if (error?.code === 'PGRST116') {
+    const newProfile = {
+      id: session.user.id,
+      name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Athlete',
+      email: session.user.email,
+      avatar_url: session.user.user_metadata?.avatar_url || null,
+      plan: 'free',
+      ai_queries_today: 0,
+      ai_queries_reset_at: new Date().toISOString().split('T')[0],
+    };
+    const { data: created, error: insertError } = await supabase
+      .from('profiles')
+      .insert([newProfile])
+      .select('*')
+      .single();
+    if (insertError) console.error('Error recreating profile:', insertError);
+    return created || null;
+  }
+
   return data;
 }
 
@@ -1042,9 +1063,14 @@ export async function createCheckoutSession(priceId) {
 export async function deleteUserAccount() {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
-  const { error } = await supabase.rpc('delete_user_account', { p_user_id: session.user.id });
-  if (error) throw error;
-  await supabase.auth.signOut();
+
+  // Delete the profile (cascades to workouts, PRs, etc.)
+  const { error: deleteError } = await supabase.rpc('delete_user_account', { p_user_id: session.user.id });
+  if (deleteError) throw deleteError;
+
+  // Also sign out to clear the session
+  const { error: signOutError } = await supabase.auth.signOut();
+  if (signOutError) console.warn("Sign out error (non-fatal):", signOutError);
 }
 
 // ─── Readiness Score helpers ─────────────────────────────────

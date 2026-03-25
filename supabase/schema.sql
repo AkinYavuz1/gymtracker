@@ -252,9 +252,10 @@ ALTER TABLE public.ai_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
--- Profiles: users can read/update their own
+-- Profiles: users can read/update/delete their own
 CREATE POLICY "Users read own profile"   ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users delete own profile" ON public.profiles FOR DELETE USING (auth.uid() = id);
 
 -- Templates: users own their templates
 CREATE POLICY "Users CRUD own templates"
@@ -1056,7 +1057,7 @@ VALUES
 -- ─── ACCOUNT DELETION ───────────────────────────────────────
 
 -- Allows a user to delete their own account.
--- All child data cascades automatically via FK → auth.users → profiles.
+-- Deletes the profile record; cascading foreign keys handle cleanup of workouts, PRs, etc.
 -- Must be called with the authenticated user's own ID.
 CREATE OR REPLACE FUNCTION public.delete_user_account(p_user_id UUID)
 RETURNS VOID AS $$
@@ -1065,7 +1066,8 @@ BEGIN
   IF auth.uid() != p_user_id THEN
     RAISE EXCEPTION 'Not authorised to delete this account';
   END IF;
-  DELETE FROM auth.users WHERE id = p_user_id;
+  -- Delete the profile (cascades to all user data: workouts, PRs, etc. via FK)
+  DELETE FROM public.profiles WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
