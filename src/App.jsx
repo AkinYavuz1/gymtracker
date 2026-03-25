@@ -94,6 +94,9 @@ const AI_PROMPTS = {
   Generate: [{ label: "Quick workout", icon: "⚡", prompt: "__GENERATE_WORKOUT__" }, { label: "Full program", icon: "🗓️", prompt: "__GENERATE_PROGRAM__" }],
 };
 
+/* ═══ SPACING SCALE ═══ */
+const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
+
 /* ═══ THEME ═══ */
 const THEMES = {
   aurora: {
@@ -178,7 +181,7 @@ function RIRSlider({ value, onChange, prescribed, color = C.accent, isPro = true
         <div style={{ fontSize: 10, color: C.dim, fontFamily: C.mono, letterSpacing: 1.5, textTransform: "uppercase" }}>Reps in Reserve</div>
         <div style={{ display: "flex", gap: 8 }}>
           {[0,1,2,3,4,5].map(n => (
-            <div key={n} style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.15)", fontFamily: C.font, opacity: 0.5 }}>{n}</div>
+            <div key={n} style={{ width: 44, height: 44, borderRadius: 10, border: `1px solid ${C.border}`, background: "rgba(255,255,255,0.02)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,0.15)", fontFamily: C.font, opacity: 0.5 }}>{n}</div>
           ))}
         </div>
         <div style={{ fontSize: 11, color: C.dim, textAlign: "center", maxWidth: 260, lineHeight: 1.4 }}>
@@ -194,13 +197,65 @@ function RIRSlider({ value, onChange, prescribed, color = C.accent, isPro = true
         {[0,1,2,3,4,5].map(n => {
           const active = value === n;
           return (
-            <button key={n} onClick={() => onChange(active ? null : n)} style={{ width: 36, height: 36, borderRadius: 10, border: active ? `1.5px solid ${color}` : `1px solid ${C.border}`, background: active ? `${color}20` : "rgba(255,255,255,0.02)", color: active ? color : "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>{n}</button>
+            <button key={n} onClick={() => onChange(active ? null : n)} aria-label={`RIR ${n}: ${labels[n]}`} aria-pressed={active} style={{ width: 44, height: 44, borderRadius: 10, border: active ? `1.5px solid ${color}` : `1px solid ${C.border}`, background: active ? `${color}20` : "rgba(255,255,255,0.02)", color: active ? color : "rgba(255,255,255,0.4)", fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: "pointer" }}>{n}</button>
           );
         })}
       </div>
       <div style={{ fontSize: 11, color: C.dim, fontFamily: C.mono }}>
         {value == null ? "Optional — tap to log effort" : value === 0 ? "To failure" : `${value} rep${value !== 1 ? "s" : ""} left in the tank`}
       </div>
+    </div>
+  );
+}
+
+/* ═══ SHARED HELPER COMPONENTS ═══ */
+function Btn({ children, onClick, variant = "primary", disabled = false, style = {}, ariaLabel }) {
+  const base = { borderRadius: 14, fontSize: 14, fontWeight: 700, fontFamily: C.font, cursor: disabled ? "default" : "pointer", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "opacity 0.2s", opacity: disabled ? 0.45 : 1, minHeight: 44, padding: "10px 20px" };
+  const variants = {
+    primary: { background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg },
+    secondary: { background: C.card, border: `1px solid ${C.border}`, color: "#fff" },
+    danger: { background: "rgba(255,107,60,0.15)", border: "1px solid rgba(255,107,60,0.3)", color: "#FF6B3C" },
+    ghost: { background: "none", border: "none", color: C.accent, padding: "8px 12px" },
+  };
+  return <button onClick={disabled ? undefined : onClick} disabled={disabled} aria-label={ariaLabel} style={{ ...base, ...variants[variant], ...style }}>{children}</button>;
+}
+
+function StyledInput({ type = "text", value, onChange, onBlur, placeholder, disabled, inputMode, min, max, style = {} }) {
+  return (
+    <input
+      type={type}
+      value={value}
+      onChange={onChange}
+      onBlur={onBlur}
+      placeholder={placeholder}
+      disabled={disabled}
+      inputMode={inputMode}
+      min={min}
+      max={max}
+      style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 15, fontFamily: C.font, outline: "none", boxSizing: "border-box", ...style }}
+    />
+  );
+}
+
+function Card({ children, style = {} }) {
+  return <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, ...style }}>{children}</div>;
+}
+
+function ScrollFade({ children, style = {} }) {
+  return (
+    <div style={{ position: "relative", ...style }}>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", display: "flex", gap: 8 }}>{children}</div>
+      <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 40, background: `linear-gradient(to right, transparent, ${C.bg})`, pointerEvents: "none" }} />
+    </div>
+  );
+}
+
+function ErrorCard({ message = "Failed to load data", onRetry }) {
+  return (
+    <div style={{ background: "rgba(255,107,60,0.08)", border: "1px solid rgba(255,107,60,0.2)", borderRadius: 14, padding: `${SPACING.lg}px`, textAlign: "center", margin: `${SPACING.xl}px 0` }}>
+      <div style={{ fontSize: 24, marginBottom: SPACING.sm }}>⚠️</div>
+      <div style={{ fontSize: 14, color: "#FF6B3C", fontWeight: 600, fontFamily: C.font, marginBottom: SPACING.sm }}>{message}</div>
+      {onRetry && <Btn onClick={onRetry} variant="danger" style={{ margin: "0 auto", width: "auto" }}>Try Again</Btn>}
     </div>
   );
 }
@@ -944,6 +999,13 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
       } catch (e) {
         console.error("Error saving benchmarks:", e);
       }
+
+      // Seed dummy workouts for new users to get started
+      try {
+        await seedDummyData();
+      } catch (e) {
+        console.error("Error seeding dummy data:", e);
+      }
     } catch (e) {
       console.error("Onboarding save error:", e);
     }
@@ -1000,12 +1062,21 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
             <div style={{ fontSize: 28, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>How old are you?</div>
             <div style={{ fontSize: 13, color: C.dim, marginBottom: 32 }}>Age affects recovery time and training recommendations</div>
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 32 }}>
-              <button onClick={() => set("age", String(Math.max(13, Number(data.age || 25) - 1)))} style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 24, cursor: "pointer" }}>−</button>
+              <button onClick={() => set("age", String(Math.max(13, Number(data.age || 25) - 1)))} aria-label="Decrease age" style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.border}`, background: C.card, color: "#fff", fontSize: 24, cursor: "pointer" }}>−</button>
               <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 72, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{data.age || "—"}</div>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="13"
+                  max="100"
+                  value={data.age || ""}
+                  onChange={e => { const v = Math.min(100, Math.max(13, Number(e.target.value) || 13)); set("age", String(v)); }}
+                  aria-label="Age in years"
+                  style={{ fontSize: 72, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1, background: "transparent", border: "none", outline: "none", width: 120, textAlign: "center", padding: 0 }}
+                />
                 <div style={{ fontSize: 13, color: C.dim, marginTop: 4 }}>years old</div>
               </div>
-              <button onClick={() => set("age", String(Math.min(100, Number(data.age || 25) + 1)))} style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.accent}40`, background: `${C.accent}12`, color: C.accent, fontSize: 24, cursor: "pointer" }}>+</button>
+              <button onClick={() => set("age", String(Math.min(100, Number(data.age || 25) + 1)))} aria-label="Increase age" style={{ width: 52, height: 52, borderRadius: 16, border: `1px solid ${C.accent}40`, background: `${C.accent}12`, color: C.accent, fontSize: 24, cursor: "pointer" }}>+</button>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
               {[18, 22, 25, 30, 35, 40, 45, 50].map(a => (
@@ -2058,7 +2129,8 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
         <div style={{ textAlign: "center", paddingTop: 80 }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📊</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>No data yet</div>
-          <div style={{ fontSize: 14, color: C.dim, marginTop: 8 }}>Complete your first workout to see insights</div>
+          <div style={{ fontSize: 14, color: C.dim, marginTop: 8, marginBottom: 24 }}>Complete your first workout to see insights</div>
+          <Btn onClick={() => onNav("pick")} style={{ margin: "0 auto", width: "auto" }}>Start Workout →</Btn>
         </div>
       ) : (
         <>
@@ -2507,7 +2579,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 500, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
       <div onClick={onClose} style={{ flex: 1, background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} />
-      <div style={{ background: "#1a1a1f", borderRadius: "24px 24px 0 0", padding: "24px 20px 40px", borderTop: `1px solid ${C.border}` }}>
+      <div style={{ background: "#1a1a1f", borderRadius: "24px 24px 0 0", padding: "24px 20px", paddingBottom: "max(40px, env(safe-area-inset-bottom, 40px))", borderTop: `1px solid ${C.border}` }}>
         <div style={{ width: 36, height: 4, borderRadius: 2, background: C.border, margin: "0 auto 20px" }} />
         <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 4 }}>Export Data</div>
         <div style={{ fontSize: 12, color: C.dim, marginBottom: 22 }}>Download your training data as a file</div>
@@ -2564,7 +2636,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
 
 // === SECTION: History ===
 /* ═══ HISTORY ═══ */
-function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowPricing, userName }) {
+function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowPricing, userName, onStart }) {
   const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
@@ -2631,7 +2703,8 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
         <div style={{ textAlign: "center", paddingTop: 40 }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: C.font, marginBottom: 6 }}>No Workouts Yet</div>
-          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5 }}>Complete a workout and it will appear here.</div>
+          <div style={{ fontSize: 13, color: C.dim, lineHeight: 1.5, marginBottom: 20 }}>Complete a workout and it will appear here.</div>
+          {onStart && <Btn onClick={onStart} style={{ margin: "0 auto", width: "auto" }}>Start Workout →</Btn>}
         </div>
       )}
       {exportOpen && (
@@ -2910,14 +2983,14 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
       </div>
 
       {/* Summary Bar */}
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, marginBottom: 18, WebkitOverflowScrolling: "touch" }}>
+      <ScrollFade style={{ marginBottom: 18 }}>
         {summaryPills.map((p, i) => (
-          <div key={i} style={{ flexShrink: 0, padding: "10px 16px", borderRadius: 14, background: C.card, border: `1px solid ${C.border}`, textAlign: "center" }}>
+          <div key={i} style={{ flexShrink: 0, padding: "10px 16px", paddingBottom: 8, borderRadius: 14, background: C.card, border: `1px solid ${C.border}`, textAlign: "center" }}>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#fff", fontFamily: C.font, lineHeight: 1 }}>{p.val}</div>
             <div style={{ fontSize: 9, color: C.dim, fontFamily: C.mono, letterSpacing: 1, textTransform: "uppercase", marginTop: 4 }}>{p.label}</div>
           </div>
         ))}
-      </div>
+      </ScrollFade>
 
       {/* Previous Week Comparison */}
       {deltas.length > 0 && (
@@ -3414,20 +3487,27 @@ function NotificationScreen({ onBack }) {
           <button
             onClick={subscribed ? handleDisable : handleEnableNotifications}
             disabled={permission === "denied" || loading}
+            role="switch"
+            aria-checked={subscribed}
+            aria-label={subscribed ? "Disable notifications" : "Enable notifications"}
             style={{
-              width: 52, height: 30, borderRadius: 15, border: "none", cursor: permission === "denied" ? "not-allowed" : "pointer",
-              background: subscribed ? C.accent : "rgba(255,255,255,0.1)",
-              position: "relative", transition: "background 0.2s ease",
-              opacity: permission === "denied" ? 0.3 : 1,
+              width: 52, height: 44, borderRadius: 22, border: "none", cursor: permission === "denied" ? "not-allowed" : "pointer",
+              background: "transparent", position: "relative", transition: "background 0.2s ease",
+              opacity: permission === "denied" ? 0.3 : 1, padding: "7px 0",
             }}
           >
             <div style={{
-              width: 24, height: 24, borderRadius: 12, background: "#fff",
-              position: "absolute", top: 3,
-              left: subscribed ? 25 : 3,
-              transition: "left 0.2s ease",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-            }} />
+              width: 52, height: 30, borderRadius: 15, background: subscribed ? C.accent : "rgba(255,255,255,0.1)",
+              position: "relative", transition: "background 0.2s ease",
+            }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: 12, background: "#fff",
+                position: "absolute", top: 3,
+                left: subscribed ? 25 : 3,
+                transition: "left 0.2s ease",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+              }} />
+            </div>
           </button>
         </div>
         {permission === "denied" && (
@@ -3456,19 +3536,29 @@ function NotificationScreen({ onBack }) {
             </div>
             <button
               onClick={() => togglePref(n.key)}
+              role="switch"
+              aria-checked={prefs[n.key]}
+              aria-label={`${n.label}: ${prefs[n.key] ? "on" : "off"}`}
               style={{
-                width: 44, height: 26, borderRadius: 13, border: "none", cursor: "pointer",
-                background: prefs[n.key] ? C.accent : "rgba(255,255,255,0.1)",
+                width: 44, height: 44, borderRadius: 22, border: "none", cursor: "pointer",
+                background: "transparent",
                 position: "relative", transition: "background 0.2s ease", flexShrink: 0,
+                padding: "9px 0",
               }}
             >
               <div style={{
-                width: 20, height: 20, borderRadius: 10, background: "#fff",
-                position: "absolute", top: 3,
-                left: prefs[n.key] ? 21 : 3,
-                transition: "left 0.2s ease",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-              }} />
+                width: 44, height: 26, borderRadius: 13,
+                background: prefs[n.key] ? C.accent : "rgba(255,255,255,0.1)",
+                position: "relative", transition: "background 0.2s ease",
+              }}>
+                <div style={{
+                  width: 20, height: 20, borderRadius: 10, background: "#fff",
+                  position: "absolute", top: 3,
+                  left: prefs[n.key] ? 21 : 3,
+                  transition: "left 0.2s ease",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                }} />
+              </div>
             </button>
           </div>
         ))}
@@ -3548,7 +3638,7 @@ function ChangePasswordSection() {
   const pwInput = (value, setter, show, setShow, placeholder) => (
     <div style={{ position: "relative", marginBottom: 10 }}>
       <input type={show ? "text" : "password"} placeholder={placeholder} value={value} onChange={e => setter(e.target.value)} disabled={loading} style={{ width: "100%", padding: "11px 44px 11px 14px", borderRadius: 10, border: `1px solid ${C.border}`, background: C.bg, color: "#fff", fontSize: 13, fontFamily: C.font, outline: "none", boxSizing: "border-box" }} />
-      <button type="button" onClick={() => setShow(v => !v)} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.dim, fontSize: 15, padding: 0, lineHeight: 1 }}>{show ? "🙈" : "👁"}</button>
+      <button type="button" onClick={() => setShow(v => !v)} aria-label={show ? "Hide password" : "Show password"} aria-pressed={show} style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.dim, fontSize: 15, padding: "0 4px", lineHeight: 1, minWidth: 44, minHeight: 44, display: "flex", alignItems: "center", justifyContent: "center" }}>{show ? "🙈" : "👁"}</button>
     </div>
   );
 
@@ -4938,7 +5028,7 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
       {step === 2 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 13, color: C.dim }}>Pick your exercises — they'll be distributed across {daysPerWeek} days ({exPerSession}/session). Selected: <span style={{ color: programColor, fontWeight: 700 }}>{selectedExercises.length}</span></div>
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+          <ScrollFade>
             {CATEGORIES.map(cat => {
               const count = selectedExercises.filter(e => e.category === cat).length;
               return (
@@ -4952,7 +5042,7 @@ function ProgramBuilderScreen({ onBack, onCreated }) {
                 </button>
               );
             })}
-          </div>
+          </ScrollFade>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {(EX_LIB[activeCategory] || []).map(ex => {
               const selected = !!selectedExercises.find(e => e.name === ex.name);
@@ -5507,26 +5597,26 @@ function ExerciseLibraryScreen({ onBack, context, onAddToWorkout, customExercise
       </div>
 
       {/* Filters */}
-      <div style={{ padding: "0 20px 6px", flexShrink: 0, overflowX: "auto" }}>
-        <div style={{ display: "flex", gap: 6, paddingBottom: 2 }}>
+      <div style={{ padding: "0 20px 6px", flexShrink: 0 }}>
+        <ScrollFade>
           {muscles.map(m2 => (
             <Pill key={m2} active={filterMuscle === m2} color={m2 !== "All" ? muscleColors[m2] : C.accent} onClick={() => setFilterMuscle(m2)} style={{ fontSize: 11, padding: "5px 11px" }}>{m2}</Pill>
           ))}
-        </div>
+        </ScrollFade>
       </div>
-      <div style={{ padding: "0 20px 6px", flexShrink: 0, overflowX: "auto" }}>
-        <div style={{ display: "flex", gap: 6, paddingBottom: 2 }}>
+      <div style={{ padding: "0 20px 6px", flexShrink: 0 }}>
+        <ScrollFade>
           {equipments.map(eq => (
             <Pill key={eq} active={filterEquipment === eq} color={C.accent} onClick={() => setFilterEquipment(eq)} style={{ fontSize: 11, padding: "5px 11px" }}>{eq}</Pill>
           ))}
-        </div>
+        </ScrollFade>
       </div>
-      <div style={{ padding: "0 20px 10px", flexShrink: 0, overflowX: "auto" }}>
-        <div style={{ display: "flex", gap: 6, paddingBottom: 2 }}>
+      <div style={{ padding: "0 20px 10px", flexShrink: 0 }}>
+        <ScrollFade>
           {difficulties.map(d => (
             <Pill key={d} active={filterDifficulty === d} color={d !== "All" ? difficultyColors[d] : C.accent} onClick={() => setFilterDifficulty(d)} style={{ fontSize: 11, padding: "5px 11px" }}>{d}</Pill>
           ))}
-        </div>
+        </ScrollFade>
       </div>
 
       {/* Count */}
@@ -5922,6 +6012,7 @@ export default function GAIns() {
   const [healthPermission, setHealthPermission] = useState(() => localStorage.getItem("healthPermission") || null);
   const [syncedSleep, setSyncedSleep] = useState(null);
   const [syncedHRV, setSyncedHRV] = useState(null);
+  const [dataError, setDataError] = useState(null);
   useEffect(() => { if (screen !== "program") setHighlightProgramId(null); }, [screen]);
 
   const handleDeleteWorkout = async (id) => {
@@ -5937,11 +6028,12 @@ export default function GAIns() {
   const withTimeout = (promise, ms) => Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms))]);
 
   const refreshAppData = async () => {
-    try { const w = await withTimeout(getWorkouts(100), 10000); setAppWorkouts(w || []); } catch (e) { console.error("Failed to load workouts:", e); }
-    try { const p = await withTimeout(getPersonalRecords(), 10000); setAppPRs(p || []); } catch (e) { console.error("Failed to load PRs:", e); }
-    try { const vt = await withTimeout(getVolumeTrend(), 10000); setAppVolumeTrend(vt || []); } catch (e) { console.error("Failed to load volume trend:", e); }
+    let hasError = false;
+    try { const w = await withTimeout(getWorkouts(100), 10000); setAppWorkouts(w || []); setDataError(null); } catch (e) { console.error("Failed to load workouts:", e); hasError = true; }
+    try { const p = await withTimeout(getPersonalRecords(), 10000); setAppPRs(p || []); } catch (e) { console.error("Failed to load PRs:", e); hasError = true; }
+    try { const vt = await withTimeout(getVolumeTrend(), 10000); setAppVolumeTrend(vt || []); } catch (e) { console.error("Failed to load volume trend:", e); hasError = true; }
     // Load programs & enrollment
-    try { const progs = await withTimeout(getPrograms(), 10000); setAppPrograms(progs || []); } catch (e) { console.error("Failed to load programs:", e); }
+    try { const progs = await withTimeout(getPrograms(), 10000); setAppPrograms(progs || []); } catch (e) { console.error("Failed to load programs:", e); hasError = true; }
     try {
       const enr = await withTimeout(getActiveEnrollment(), 10000);
       setActiveEnrollment(enr);
@@ -5961,7 +6053,7 @@ export default function GAIns() {
       } else {
         setScheduledWorkoutForToday(null);
       }
-    } catch (e) { console.error("Failed to load enrollment:", e); }
+    } catch (e) { console.error("Failed to load enrollment:", e); hasError = true; }
     // Fetch health data for Pro+ users with permission
     const savedHealthPerm = localStorage.getItem("healthPermission");
     if (savedHealthPerm === "granted" && isHealthAvailable()) {
@@ -5972,7 +6064,8 @@ export default function GAIns() {
         if (hrv != null) setSyncedHRV(hrv);
       } catch (e) { console.error("Health data fetch error:", e); }
     }
-    try { const cx = await withTimeout(getCustomExercises(), 10000); setCustomExercises(cx || []); } catch (e) { console.error("Failed to load custom exercises:", e); }
+    try { const cx = await withTimeout(getCustomExercises(), 10000); setCustomExercises(cx || []); } catch (e) { console.error("Failed to load custom exercises:", e); hasError = true; }
+    if (hasError) setDataError("Failed to load some data. Check your connection and try again.");
     setDataLoaded(true);
   };
 
@@ -6035,7 +6128,6 @@ export default function GAIns() {
         setAuthLoading(false);
       } else if (event === 'SIGNED_IN') {
         setUser(session.user);
-        setTimeout(() => seedDummyData(), 1000);
         try {
           const prof = await getProfile();
           if (prof) {
@@ -6096,6 +6188,12 @@ export default function GAIns() {
   useEffect(() => {
     if (user && !authLoading) syncOfflineWorkouts();
   }, [user, authLoading]);
+
+  // Modal mutual exclusion: warn in dev if multiple modals are open
+  useEffect(() => {
+    const activeModals = [profileModalOpen, importModalOpen, deleteAccountModal, !!legalScreen, showCheckinModal, !!showPreCheckin, !!showPostFeedback, !!programOnboardingProgram, showProgramBuilder].filter(Boolean);
+    if (activeModals.length > 1) console.warn("Multiple modals open simultaneously:", activeModals.length);
+  }, [profileModalOpen, importModalOpen, deleteAccountModal, legalScreen, showCheckinModal, showPreCheckin, showPostFeedback, programOnboardingProgram, showProgramBuilder]);
 
   // No useEffect for data loading — refreshAppData is called explicitly
   // from checkAuth (page load) and refreshAuth (sign-in) after JWT is confirmed fresh.
@@ -6206,9 +6304,10 @@ export default function GAIns() {
     setDeleteAccountLoading(true);
     try {
       await deleteUserAccount();
-      // Hard refresh to clear all browser cache (localStorage, IndexedDB, service worker cache, etc.)
-      // This prevents stale data when the user logs back in with the same email
-      window.location.replace(window.location.origin);
+      // Give RPC call time to complete, then hard refresh to clear browser cache
+      setTimeout(() => {
+        window.location.replace(window.location.origin);
+      }, 500);
     } catch (e) {
       console.error("Delete account error:", e);
       alert("Failed to delete account: " + (e.message || "Unknown error"));
@@ -6420,6 +6519,14 @@ export default function GAIns() {
           padding-top: env(safe-area-inset-top, 0px);
           padding-bottom: env(safe-area-inset-bottom, 0px);
         }
+        button:focus-visible, input:focus-visible, textarea:focus-visible {
+          outline: 2px solid #A78BFA;
+          outline-offset: 2px;
+        }
+        input:focus, textarea:focus {
+          border-color: #A78BFA !important;
+          box-shadow: 0 0 0 2px rgba(167,139,250,0.25);
+        }
         @media (min-width: 500px) {
           .app-shell {
             width: 390px; height: 844px; margin: 20px auto;
@@ -6451,6 +6558,13 @@ export default function GAIns() {
             ? `Offline${pendingSync > 0 ? ` · ${pendingSync} workout${pendingSync > 1 ? "s" : ""} queued` : " · workouts will save locally"}`
             : `${pendingSync} workout${pendingSync > 1 ? "s" : ""} pending sync`
           }
+        </div>
+      )}
+
+      {dataError && (
+        <div style={{ padding: "12px 20px", background: "rgba(255,107,60,0.1)", borderBottom: "1px solid rgba(255,107,60,0.2)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12, color: "#FF6B3C", fontFamily: C.mono }}>
+          <span>{dataError}</span>
+          <button onClick={() => { setDataError(null); refreshAppData(); }} style={{ background: "rgba(255,107,60,0.2)", border: "none", color: "#FF6B3C", padding: "4px 12px", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Retry</button>
         </div>
       )}
 
@@ -6486,7 +6600,7 @@ export default function GAIns() {
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
         {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} customExercises={customExercises} profile={profile} />}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
-        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} plan={plan} onShowPricing={() => nav("pricing")} userName={userName} />}
+        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} plan={plan} onShowPricing={() => nav("pricing")} userName={userName} onStart={() => nav("pick")} />}
         {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onNav={nav} profile={profile} />}
         {screen === "volumeDashboard" && <VolumeDashboardScreen enrollment={activeEnrollment} volumeStandards={volumeStandards} onBack={() => nav("program")} />}
         {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}

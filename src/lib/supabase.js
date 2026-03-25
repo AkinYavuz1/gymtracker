@@ -1064,9 +1064,16 @@ export async function deleteUserAccount() {
   const session = await getSession();
   if (!session?.user) throw new Error('Not authenticated');
 
+  console.log('Starting account deletion for user:', session.user.id, 'email:', session.user.email);
+
   // Delete the profile (cascades to workouts, PRs, etc.)
   const { error: deleteError } = await supabase.rpc('delete_user_account', { p_user_id: session.user.id });
-  if (deleteError) throw deleteError;
+  if (deleteError) {
+    console.error('Delete RPC error:', deleteError);
+    throw deleteError;
+  }
+
+  console.log('Profile deletion successful');
 
   // Also sign out to clear the session
   const { error: signOutError } = await supabase.auth.signOut();

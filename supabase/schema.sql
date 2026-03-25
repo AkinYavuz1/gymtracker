@@ -1057,7 +1057,7 @@ VALUES
 -- ─── ACCOUNT DELETION ───────────────────────────────────────
 
 -- Allows a user to delete their own account.
--- Deletes the profile record; cascading foreign keys handle cleanup of workouts, PRs, etc.
+-- Deletes the current profile record; cascading FKs handle workouts, PRs, etc.
 -- Must be called with the authenticated user's own ID.
 CREATE OR REPLACE FUNCTION public.delete_user_account(p_user_id UUID)
 RETURNS VOID AS $$
@@ -1066,7 +1066,8 @@ BEGIN
   IF auth.uid() != p_user_id THEN
     RAISE EXCEPTION 'Not authorised to delete this account';
   END IF;
-  -- Delete the profile (cascades to all user data: workouts, PRs, etc. via FK)
+
+  -- Delete the profile (cascades to all user data: workouts, PRs, conversations, programs, etc. via FK)
   DELETE FROM public.profiles WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
