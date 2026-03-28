@@ -61,6 +61,7 @@ vi.mock('../lib/supabase', () => {
     logLoginEvent: vi.fn(),
     logPageEvent: vi.fn(),
     setSessionCache: vi.fn(),
+    getExerciseHistory: vi.fn().mockResolvedValue({}),
   };
 });
 
@@ -136,7 +137,7 @@ async function startFreeWorkout() {
 
 async function navigateToCoach() {
   await goToDashboard();
-  fireEvent.click(screen.getByText('Ask AI Coach'));
+  fireEvent.click(screen.getByText('AI Coach'));
   await waitFor(() => expect(screen.getByText('AI Strength Coach')).toBeInTheDocument());
 }
 
@@ -449,7 +450,7 @@ describe('Error boundaries and resilience', () => {
       getProfile.mockResolvedValue({ ...mockProfile, plan: 'pro' });
 
       render(<App />);
-      await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
       fireEvent.click(screen.getByText('Coach'));
       await waitFor(() => {
         expect(screen.getByText('30/30')).toBeInTheDocument();
@@ -461,7 +462,7 @@ describe('Error boundaries and resilience', () => {
       getProfile.mockResolvedValue({ ...mockProfile, plan: 'unlimited' });
 
       render(<App />);
-      await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
       fireEvent.click(screen.getByText('Coach'));
       await waitFor(() => {
         expect(screen.getByText('∞')).toBeInTheDocument();

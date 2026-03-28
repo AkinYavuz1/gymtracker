@@ -49,6 +49,7 @@ vi.mock('../lib/supabase', () => {
     logLoginEvent: vi.fn(),
     logPageEvent: vi.fn(),
     setSessionCache: vi.fn(),
+    getExerciseHistory: vi.fn().mockResolvedValue({}),
   };
 });
 

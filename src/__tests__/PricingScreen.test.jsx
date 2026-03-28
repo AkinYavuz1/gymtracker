@@ -49,6 +49,7 @@ vi.mock('../lib/supabase', () => {
     logLoginEvent: vi.fn(),
     logPageEvent: vi.fn(),
     setSessionCache: vi.fn(),
+    getExerciseHistory: vi.fn().mockResolvedValue({}),
   };
 });
 
@@ -90,7 +91,7 @@ describe('PricingScreen', () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
 
     // Navigate to coach
     fireEvent.click(screen.getByText('Coach'));
@@ -164,7 +165,7 @@ describe('PricingScreen', () => {
     callCoachAPI.mockResolvedValue({ text: 'Response', cost_usd: 0 });
 
     render(<App />);
-    await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
 
     // Use up 30 pro queries to get to pricing
     // Instead, let's directly navigate via the coach screen limit

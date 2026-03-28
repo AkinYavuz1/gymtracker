@@ -415,6 +415,65 @@ export async function importWorkouts(workoutGroups) {
   return { inserted, skipped, errors };
 }
 
+// Fetch last session data for a list of exercise names.
+// Returns { "Bench Press": { weight: 80, reps: 8, date: "2025-03-20", sets: [...] }, ... }
+export async function getExerciseHistory(exerciseNames) {
+  const session = await getSession();
+  const userId = session?.user?.id;
+  if (!userId || !exerciseNames || exerciseNames.length === 0) return {};
+
+  // Get the user's most recent sets for each exercise, joined with workout date
+  const { data, error } = await supabase
+    .from('workout_sets')
+    .select('exercise_name, weight_kg, reps, set_number, workout_id, workouts!inner(started_at, user_id)')
+    .eq('workouts.user_id', userId)
+    .in('exercise_name', exerciseNames)
+    .eq('completed', true)
+    .order('set_number', { ascending: true });
+
+  if (error) {
+    console.error('getExerciseHistory error:', error);
+    return {};
+  }
+  if (!data || data.length === 0) return {};
+
+  // Group by exercise, then find the most recent workout for each
+  const byExercise = {};
+  for (const row of data) {
+    const name = row.exercise_name;
+    if (!byExercise[name]) byExercise[name] = [];
+    byExercise[name].push(row);
+  }
+
+  const result = {};
+  for (const [name, rows] of Object.entries(byExercise)) {
+    // Find the most recent workout_id for this exercise
+    const sorted = rows.sort((a, b) =>
+      new Date(b.workouts.started_at) - new Date(a.workouts.started_at)
+    );
+    const latestWorkoutId = sorted[0].workout_id;
+    const latestDate = sorted[0].workouts.started_at;
+
+    // Get all sets from that workout for this exercise
+    const latestSets = sorted
+      .filter(r => r.workout_id === latestWorkoutId)
+      .sort((a, b) => a.set_number - b.set_number)
+      .map(r => ({ weight: r.weight_kg, reps: r.reps }));
+
+    // Best set = highest weight
+    const best = latestSets.reduce((b, s) => s.weight > b.weight ? s : b, latestSets[0]);
+
+    result[name] = {
+      weight: best.weight,
+      reps: best.reps,
+      date: latestDate,
+      sets: latestSets,
+    };
+  }
+
+  return result;
+}
+
 export async function getWorkoutSets(workoutIds) {
   if (!workoutIds || workoutIds.length === 0) return [];
   const { data, error } = await supabase
@@ -1218,4 +1277,216 @@ export async function logPageEvent(userId, screenName, previousScreen = null, pl
     });
     if (error) console.error('[analytics] logPageEvent error:', error);
   } catch (e) { console.error('[analytics] logPageEvent exception:', e); }
+}
+
+// ─── Nutrition helpers ──────────────────────────────────────
+
+export async function getNutritionGoals() {
+  const session = await getSession();
+  if (!session?.user) return null;
+  const { data, error } = await supabase
+    .from('nutrition_goals')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+  if (error) console.error('getNutritionGoals error:', error);
+  return data;
+}
+
+export async function upsertNutritionGoals(goals) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('nutrition_goals')
+    .upsert({ ...goals, user_id: session.user.id }, { onConflict: 'user_id' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getFoodLogs(date) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase
+    .from('food_logs')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .eq('log_date', date)
+    .order('created_at', { ascending: true });
+  if (error) console.error('getFoodLogs error:', error);
+  return data || [];
+}
+
+export async function addFoodLog(entry) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('food_logs')
+    .insert({ ...entry, user_id: session.user.id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFoodLog(id, updates) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('food_logs')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', session.user.id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteFoodLog(id) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('food_logs')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', session.user.id);
+  if (error) throw error;
+}
+
+export async function getFoodFavorites() {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase
+    .from('food_favorites')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .order('use_count', { ascending: false });
+  if (error) console.error('getFoodFavorites error:', error);
+  return data || [];
+}
+
+export async function addFoodFavorite(food) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('food_favorites')
+    .upsert({
+      user_id: session.user.id,
+      food_name: food.food_name,
+      brand: food.brand || '',
+      barcode: food.barcode,
+      serving_size: food.serving_size,
+      serving_unit: food.serving_unit || 'g',
+      calories: food.calories,
+      protein_g: food.protein_g,
+      carbs_g: food.carbs_g,
+      fat_g: food.fat_g,
+      fiber_g: food.fiber_g || 0,
+      sugar_g: food.sugar_g || 0,
+      sodium_mg: food.sodium_mg || 0,
+      off_product_id: food.off_product_id,
+      use_count: (food.use_count || 0) + 1,
+    }, { onConflict: 'user_id,food_name,brand' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function removeFoodFavorite(id) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { error } = await supabase
+    .from('food_favorites')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', session.user.id);
+  if (error) throw error;
+}
+
+export async function getRecentFoods(limit = 20) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase
+    .from('food_logs')
+    .select('food_name, brand, barcode, serving_size, serving_unit, calories, protein_g, carbs_g, fat_g, fiber_g, sugar_g, sodium_mg, off_product_id')
+    .eq('user_id', session.user.id)
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) { console.error('getRecentFoods error:', error); return []; }
+  // Deduplicate by food_name+brand
+  const seen = new Set();
+  const unique = [];
+  for (const f of (data || [])) {
+    const key = `${f.food_name}|${f.brand || ''}`;
+    if (!seen.has(key)) { seen.add(key); unique.push(f); }
+    if (unique.length >= limit) break;
+  }
+  return unique;
+}
+
+export async function addWaterLog(date, amount_ml) {
+  const session = await getSession();
+  if (!session?.user) throw new Error('Not authenticated');
+  const { data, error } = await supabase
+    .from('water_logs')
+    .insert({ user_id: session.user.id, log_date: date, amount_ml })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function getWaterTotal(date) {
+  const session = await getSession();
+  if (!session?.user) return 0;
+  const { data, error } = await supabase
+    .from('water_logs')
+    .select('amount_ml')
+    .eq('user_id', session.user.id)
+    .eq('log_date', date);
+  if (error) { console.error('getWaterTotal error:', error); return 0; }
+  return (data || []).reduce((sum, w) => sum + w.amount_ml, 0);
+}
+
+export async function getDailyNutritionSummary(date) {
+  const session = await getSession();
+  if (!session?.user) return null;
+  const { data, error } = await supabase.rpc('get_daily_nutrition', {
+    p_user_id: session.user.id,
+    p_date: date,
+  });
+  if (error) { console.error('getDailyNutritionSummary error:', error); return null; }
+  return data;
+}
+
+export async function getNutritionTrend(days = 7) {
+  const session = await getSession();
+  if (!session?.user) return [];
+  const { data, error } = await supabase.rpc('get_nutrition_trend', {
+    p_user_id: session.user.id,
+    p_days: days,
+  });
+  if (error) { console.error('getNutritionTrend error:', error); return []; }
+  return data || [];
+}
+
+export async function searchFoodsAPI(query) {
+  if (!query || query.length < 2) return [];
+  const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&json=1&page_size=20&fields=product_name,product_name_en,brands,code,nutriments,serving_quantity,serving_quantity_unit,image_front_small_url,image_url,nutriscore_grade`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.products || [];
+}
+
+export async function lookupBarcode(barcode) {
+  const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(barcode)}.json`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const json = await res.json();
+  if (json.status !== 1) return null;
+  return json.product || null;
 }

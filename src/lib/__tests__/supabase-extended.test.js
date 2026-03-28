@@ -17,6 +17,7 @@ const { mockAuth, mockQueryBuilder, mockClient } = vi.hoisted(() => {
     limit: vi.fn(),
     single: vi.fn(),
     maybeSingle: vi.fn(),
+    in: vi.fn(),
   };
 
   const mockAuth = {
@@ -65,6 +66,7 @@ import {
   getVolumeStandards,
   logPRShare,
   setSessionCache,
+  getExerciseHistory,
 } from '../supabase';
 
 function setupChainableMock() {
@@ -78,6 +80,7 @@ function setupChainableMock() {
   mockQueryBuilder.gte.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.lte.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.is.mockReturnValue(mockQueryBuilder);
+  mockQueryBuilder.in.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.or.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.order.mockReturnValue(mockQueryBuilder);
   mockQueryBuilder.limit.mockReturnValue(mockQueryBuilder);
@@ -1146,6 +1149,52 @@ describe('supabase.js — extended coverage', () => {
       expect(mockQueryBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
         estimated_1rm: null,
       }));
+    });
+  });
+
+  // ─── getExerciseHistory ───────────────────────────────────────────────────
+
+  describe('getExerciseHistory', () => {
+    it('returns empty object when no exercise names provided', async () => {
+      const result = await getExerciseHistory([]);
+      expect(result).toEqual({});
+    });
+
+    it('returns empty object when no session', async () => {
+      setSessionCache(null);
+      const result = await getExerciseHistory(['Bench Press']);
+      expect(result).toEqual({});
+    });
+
+    it('groups sets by exercise and returns most recent workout data', async () => {
+      const mockData = [
+        { exercise_name: 'Bench Press', weight_kg: 80, reps: 8, set_number: 1, workout_id: 'w1', workouts: { started_at: '2025-03-20T10:00:00Z', user_id: 'user-1' } },
+        { exercise_name: 'Bench Press', weight_kg: 82.5, reps: 6, set_number: 2, workout_id: 'w1', workouts: { started_at: '2025-03-20T10:00:00Z', user_id: 'user-1' } },
+        { exercise_name: 'Bench Press', weight_kg: 75, reps: 10, set_number: 1, workout_id: 'w0', workouts: { started_at: '2025-03-15T10:00:00Z', user_id: 'user-1' } },
+        { exercise_name: 'Squat', weight_kg: 120, reps: 5, set_number: 1, workout_id: 'w1', workouts: { started_at: '2025-03-20T10:00:00Z', user_id: 'user-1' } },
+      ];
+      mockQueryBuilder.order.mockResolvedValue({ data: mockData, error: null });
+
+      const result = await getExerciseHistory(['Bench Press', 'Squat']);
+
+      expect(result['Bench Press']).toBeDefined();
+      expect(result['Bench Press'].weight).toBe(82.5); // best set from latest workout
+      expect(result['Bench Press'].reps).toBe(6);
+      expect(result['Bench Press'].sets).toHaveLength(2); // 2 sets from latest workout w1
+      expect(result['Squat']).toBeDefined();
+      expect(result['Squat'].weight).toBe(120);
+    });
+
+    it('returns empty object when query returns no data', async () => {
+      mockQueryBuilder.order.mockResolvedValue({ data: [], error: null });
+      const result = await getExerciseHistory(['Bench Press']);
+      expect(result).toEqual({});
+    });
+
+    it('returns empty object on query error', async () => {
+      mockQueryBuilder.order.mockResolvedValue({ data: null, error: { message: 'fail' } });
+      const result = await getExerciseHistory(['Bench Press']);
+      expect(result).toEqual({});
     });
   });
 });

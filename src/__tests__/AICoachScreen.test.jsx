@@ -51,6 +51,7 @@ vi.mock('../lib/supabase', () => {
     logLoginEvent: vi.fn(),
     logPageEvent: vi.fn(),
     setSessionCache: vi.fn(),
+    getExerciseHistory: vi.fn().mockResolvedValue({}),
   };
 });
 
@@ -92,9 +93,9 @@ describe('AICoachScreen', () => {
   async function navigateToCoach() {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Ask AI Coach')).toBeInTheDocument();
+      expect(screen.getByText('AI Coach')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('Ask AI Coach'));
+    fireEvent.click(screen.getByText('AI Coach'));
     await waitFor(() => {
       expect(screen.getByText('AI Strength Coach')).toBeInTheDocument();
     });
@@ -289,10 +290,10 @@ describe('AICoachScreen', () => {
       });
 
       render(<App />);
-      await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
 
       // Navigate to coach
-      fireEvent.click(screen.getByText('Ask AI Coach'));
+      fireEvent.click(screen.getByText('AI Coach'));
       await waitFor(() => expect(screen.getByText('AI Strength Coach')).toBeInTheDocument());
 
       // Use up all 5 queries using "New" to reset between each
@@ -322,7 +323,7 @@ describe('AICoachScreen', () => {
       });
 
       render(<App />);
-      await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
 
       fireEvent.click(screen.getByText('Coach'));
       await waitFor(() => {
@@ -337,7 +338,7 @@ describe('AICoachScreen', () => {
       });
 
       render(<App />);
-      await waitFor(() => expect(screen.getByText('Ask AI Coach')).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText('AI Coach')).toBeInTheDocument());
 
       fireEvent.click(screen.getByText('Coach'));
       await waitFor(() => {

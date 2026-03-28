@@ -52,6 +52,7 @@ vi.mock('../lib/supabase', () => {
     logLoginEvent: vi.fn(),
     logPageEvent: vi.fn(),
     setSessionCache: vi.fn(),
+    getExerciseHistory: vi.fn().mockResolvedValue({}),
   };
 });
 
@@ -113,10 +114,10 @@ describe('HomeScreen', () => {
     });
   });
 
-  it('displays Ask AI Coach button', async () => {
+  it('displays AI Coach button', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Ask AI Coach')).toBeInTheDocument();
+      expect(screen.getByText('AI Coach')).toBeInTheDocument();
     });
   });
 
@@ -165,7 +166,7 @@ describe('HomeScreen', () => {
   it('shows AI Coach button', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Ask AI Coach')).toBeInTheDocument();
+      expect(screen.getByText('AI Coach')).toBeInTheDocument();
     });
   });
 
@@ -218,13 +219,13 @@ describe('HomeScreen', () => {
     });
   });
 
-  it('navigates to AI Coach when Ask AI Coach clicked', async () => {
+  it('navigates to AI Coach when AI Coach clicked', async () => {
     render(<App />);
     await waitFor(() => {
-      expect(screen.getByText('Ask AI Coach')).toBeInTheDocument();
+      expect(screen.getByText('AI Coach')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('Ask AI Coach'));
+    fireEvent.click(screen.getByText('AI Coach'));
     await waitFor(() => {
       expect(screen.getByText('AI Strength Coach')).toBeInTheDocument();
     });

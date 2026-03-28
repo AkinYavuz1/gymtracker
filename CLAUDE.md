@@ -22,8 +22,9 @@ npm run setup            # Show setup instructions
 **gAIns** is an AI-powered gym tracking app with three layers:
 
 ### Frontend (React + Vite)
-- **src/App.jsx**: Single monolithic component file (~6719 lines) containing all screens, state, and logic
-- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, and AI coach API calls (1144 lines)
+- **src/App.jsx**: Single monolithic component file (~7848 lines) containing all screens, state, and logic
+- **src/lib/supabase.js**: Supabase client initialization and helper functions for auth, data queries, AI coach API calls, and nutrition CRUD (1492 lines)
+- **src/lib/nutritionEngine.js**: TDEE/macro calculation (Mifflin-St Jeor), protein timing analysis, Open Food Facts response parsing, calorie balance logic (173 lines)
 - **src/lib/programEngine.js**: Workout program generation and scheduling logic (345 lines)
 - **src/lib/notifications.js**: Push notification setup and scheduling via APNs/FCM (465 lines) — includes `sendPushNotification()` and `setNotificationActionHandler()` for app-side triggers
 - **src/lib/healthData.js**: Unified Apple Health / Google Fit abstraction — sleep, HRV data fetching (130 lines)
@@ -68,6 +69,10 @@ npm run setup            # Show setup instructions
 - `programs` + `program_cycles` — Workout programs and enrollment cycles (added via `migration_programs.sql`)
 - `user_login_events` — One row per user per day; tracks `session_count`, `platform`, `app_version` (added via `migration_analytics.sql`)
 - `user_page_events` — Append-only screen navigation log; tracks `screen_name`, `previous_screen`, `platform` (added via `migration_analytics.sql`)
+- `nutrition_goals` — Daily calorie/macro targets per user, activity level, goal type (added via `migration_nutrition.sql`)
+- `food_logs` — Individual food entries with meal type, date, macros, barcode, Open Food Facts product ID (added via `migration_nutrition.sql`)
+- `food_favorites` — Saved/favorited foods for quick re-logging with use_count (added via `migration_nutrition.sql`)
+- `water_logs` — Water intake tracking, multiple entries per day summed for total (added via `migration_nutrition.sql`)
 
 **Plan Limits** (hard-coded in schema):
 - Free: 5 queries/day
@@ -80,7 +85,7 @@ All screens live in `src/App.jsx`. Use `// === SECTION: X ===` anchors to naviga
 
 - **Auth** — Login / sign-up
 - **Onboarding** — Multi-step first-run flow
-- **Home / Dashboard** — Weekly KPIs, schedule strip
+- **Home / Dashboard** — Weekly KPIs, schedule strip, nutrition card
 - **Workout** — Active session tracking
 - **Template Picker** — Browse and start from templates
 - **Stats** — Charts, volume, muscle breakdown
@@ -93,6 +98,7 @@ All screens live in `src/App.jsx`. Use `// === SECTION: X ===` anchors to naviga
 - **Program Onboarding** — Program setup flow
 - **Program Builder** — Build custom programs
 - **Volume Dashboard** — Volume tracking over time
+- **Nutrition** — Food logging (MFP-style), calorie/macro tracking, barcode scanner, water tracking, weekly trends, protein timing analysis
 - **AI Coach** — Chat UI with quota display
 - **Notifications** — Push notification settings
 - **Profile / Settings** — Password change, profile management
@@ -244,6 +250,8 @@ Capacitor 8 requires Java 21 but system has Java 17. Fix by patching these two f
 ## File Size Reference
 
 See `FILEMAP.md` for authoritative current line counts. Approximate sizes:
-- `src/App.jsx`: ~6719 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
-- `src/lib/supabase.js`: ~1144 lines
+- `src/App.jsx`: ~7848 lines (large monolith; use `// === SECTION: X ===` anchors to navigate)
+- `src/lib/supabase.js`: ~1492 lines
+- `src/lib/nutritionEngine.js`: ~173 lines
 - `supabase/schema.sql`: ~1092 lines
+- `supabase/migration_nutrition.sql`: ~228 lines
