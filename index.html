@@ -3,17 +3,108 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="description" content="AI-powered gym tracking and coaching. Track workouts, get personal records, and receive AI coaching from Claude." />
+    <title>gAIns — AI-Powered Gym Tracker for Strength Athletes</title>
+    <meta name="description" content="Track your workouts, get AI coaching, and build strength with gAIns. Personalised training advice powered by AI. Built for powerlifters and strength athletes. Free to start." />
+    <meta name="keywords" content="gym tracker, AI gym app, powerlifting tracker, strength training app, workout log, AI coach, gym app UK" />
+    <link rel="canonical" href="https://gainsai.uk" />
     <meta name="theme-color" content="#08080A" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>gAIns</title>
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="gAIns — AI-Powered Gym Tracker for Strength Athletes" />
+    <meta property="og:description" content="Track your workouts, get AI coaching, and build strength. Built for powerlifters and strength athletes." />
+    <meta property="og:url" content="https://gainsai.uk" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="gAIns" />
+    <meta property="og:locale" content="en_GB" />
+    <meta property="og:image" content="https://gainsai.uk/icons/icon-512.png" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="gAIns — AI-Powered Gym Tracker" />
+    <meta name="twitter:description" content="AI coaching, workout tracking, and strength analytics. Free to start." />
+    <meta name="twitter:image" content="https://gainsai.uk/icons/icon-512.png" />
+
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💪</text></svg>" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Structured Data -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "gAIns",
+      "description": "AI-powered gym tracking app for strength athletes and powerlifters",
+      "url": "https://gainsai.uk",
+      "applicationCategory": "HealthApplication",
+      "operatingSystem": "Web, Android",
+      "offers": [
+        {"@type": "Offer", "price": "0", "priceCurrency": "GBP", "name": "Free"},
+        {"@type": "Offer", "price": "4.99", "priceCurrency": "GBP", "name": "Pro"},
+        {"@type": "Offer", "price": "9.99", "priceCurrency": "GBP", "name": "Unlimited"}
+      ],
+      "creator": {
+        "@type": "Organization",
+        "name": "Nith Digital",
+        "url": "https://nithdigital.uk"
+      }
+    }
+    </script>
+
   </head>
   <body style="margin:0; background:#08080A;">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    <!-- noscript fallback for crawlers -->
+    <noscript>
+      <style>
+        #noscript-landing { font-family: sans-serif; background: #08080A; color: #fff; padding: 2rem; max-width: 800px; margin: 0 auto; }
+        #noscript-landing h1 { font-size: 2rem; margin-bottom: 1rem; }
+        #noscript-landing p { line-height: 1.6; margin-bottom: 1rem; color: #ccc; }
+        #noscript-landing ul { color: #ccc; line-height: 2; }
+        #noscript-landing .pricing { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
+        #noscript-landing .plan { border: 1px solid #333; padding: 1rem; border-radius: 8px; min-width: 160px; }
+        #noscript-landing .plan h3 { margin: 0 0 0.5rem; }
+      </style>
+      <div id="noscript-landing">
+        <h1>AI-Powered Gym Tracking for Strength Athletes</h1>
+        <p>gAIns is a free gym tracker with an AI coaching assistant built for powerlifters and strength athletes. Log workouts, track personal records, and get personalised training advice powered by AI.</p>
+
+        <h2>Features</h2>
+        <ul>
+          <li>Workout logging with sets, reps, and weights</li>
+          <li>Personal record tracking with estimated 1RM (Epley formula)</li>
+          <li>AI coaching powered by Claude — ask questions, get personalised advice</li>
+          <li>Workout programs and templates for powerlifting, hypertrophy, and more</li>
+          <li>Nutrition tracking — calories, macros, barcode scanner, water intake</li>
+          <li>Volume dashboard and strength progress charts</li>
+          <li>Push notifications for workout reminders and streak alerts</li>
+          <li>Works as a Progressive Web App and Android APK</li>
+        </ul>
+
+        <h2>Pricing</h2>
+        <div class="pricing">
+          <div class="plan">
+            <h3>Free</h3>
+            <p>5 AI queries/day. Unlimited workout logging. All core features.</p>
+          </div>
+          <div class="plan">
+            <h3>Pro — £4.99/mo</h3>
+            <p>30 AI queries/day. Priority support.</p>
+          </div>
+          <div class="plan">
+            <h3>Unlimited — £9.99/mo</h3>
+            <p>999 AI queries/day. All features unlocked.</p>
+          </div>
+        </div>
+
+        <h2>About</h2>
+        <p>gAIns is built by Nith Digital. It uses Supabase for data storage and Anthropic Claude for AI coaching. Available on web and Android.</p>
+        <p>Start for free at <a href="https://gainsai.uk" style="color:#a78bfa">gainsai.uk</a></p>
+      </div>
+    </noscript>
   </body>
 </html>
