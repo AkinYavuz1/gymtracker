@@ -11,6 +11,7 @@ import { getAnimalComparison, getAnimalStyle } from "./lib/animalWeights";
 import { registerServiceWorker, getNotificationPermission, checkNativePermission, requestNotificationPermission, subscribeToPush, unsubscribeFromPush, getCurrentSubscription, getNotificationPreferences, updateNotificationPreferences, sendPushNotification, setNotificationActionHandler } from "./lib/notifications";
 import { Capacitor } from "@capacitor/core";
 import { calculateTDEE, calculateMacroGoals, calculateGoalsFromProfile, calculateProteinTiming, calculateNetCalories, getMacroRatios, getCalorieColor, getMacroColor, parseFoodFromAPI, scaleNutrition, WATER_PRESETS, MEALS } from "./lib/nutritionEngine";
+import { GUEST_WORKOUTS, GUEST_SETS, GUEST_PRS, GUEST_VOLUME_TREND, GUEST_PROFILE, GUEST_AI_MESSAGES, GUEST_NUTRITION_GOALS, GUEST_FOOD_LOGS, GUEST_WATER_TOTAL, getGuestWorkoutSets } from "./lib/guestData";
 
 /* ═══ API CONFIG ═══ */
 const PLANS = {
@@ -1246,9 +1247,31 @@ function OnboardingScreen({ user, onComplete, onBack: onExitBack }) {
   );
 }
 
+// === SECTION: Guest Signup Prompt ===
+function GuestSignupPrompt({ onClose, onSignUp }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(12px)", zIndex: 600, display: "flex", alignItems: "flex-end", padding: "0 0 env(safe-area-inset-bottom, 0px)" }}>
+      <div style={{ width: "100%", background: "#1A1C24", borderRadius: "24px 24px 0 0", padding: "28px 24px 32px", border: "1px solid rgba(255,255,255,0.08)", borderBottom: "none" }}>
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.15)", margin: "0 auto 24px" }} />
+        <div style={{ fontSize: 24, textAlign: "center", marginBottom: 8 }}>🔒</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", fontFamily: C.font, textAlign: "center", marginBottom: 8 }}>Create a free account</div>
+        <div style={{ fontSize: 14, color: C.dim, textAlign: "center", lineHeight: 1.6, marginBottom: 24 }}>
+          You're browsing demo data. Sign up for free to track your real workouts, log food, and chat with your AI coach.
+        </div>
+        <button onClick={onSignUp} style={{ width: "100%", padding: "15px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.accent}, ${C.accent2})`, color: C.bg, fontSize: 15, fontWeight: 800, fontFamily: C.font, cursor: "pointer", marginBottom: 12 }}>
+          Sign Up Free →
+        </button>
+        <button onClick={onClose} style={{ width: "100%", padding: "13px", borderRadius: 14, border: `1px solid rgba(255,255,255,0.08)`, background: "none", color: C.dim, fontSize: 14, fontWeight: 600, fontFamily: C.font, cursor: "pointer" }}>
+          Keep Browsing
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // === SECTION: Auth ===
 /* ═══ AUTH ═══ */
-function AuthScreen({ onSignUp, onSignIn, onGoogleSignIn, onLegal }) {
+function AuthScreen({ onSignUp, onSignIn, onGoogleSignIn, onLegal, onGuest }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -1369,7 +1392,12 @@ function AuthScreen({ onSignUp, onSignIn, onGoogleSignIn, onLegal }) {
           </div>
         </>
       )}
-      <div style={{ marginTop: 32, fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", fontFamily: C.font }}>
+      <div style={{ marginTop: 24 }}>
+        <button onClick={onGuest} style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: `1px solid rgba(255,255,255,0.08)`, background: "rgba(255,255,255,0.03)", color: "rgba(255,255,255,0.35)", fontSize: 13, fontFamily: C.font, cursor: "pointer" }}>
+          Browse without an account →
+        </button>
+      </div>
+      <div style={{ marginTop: 16, fontSize: 11, color: "rgba(255,255,255,0.2)", textAlign: "center", fontFamily: C.font }}>
         <button onClick={() => onLegal && onLegal("privacy")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11, fontFamily: C.font, textDecoration: "underline", padding: 0 }}>Privacy Policy</button>
         <span style={{ margin: "0 8px" }}>·</span>
         <button onClick={() => onLegal && onLegal("terms")} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11, fontFamily: C.font, textDecoration: "underline", padding: 0 }}>Terms of Service</button>
@@ -2082,7 +2110,7 @@ function WorkoutScreen({ template, onFinish, onBack, isOnline = true, user, prs 
 
 // === SECTION: Stats ===
 /* ═══ STATS ═══ */
-function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile }) {
+function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile, fetchSets = getWorkoutSets }) {
   const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
@@ -2093,7 +2121,7 @@ function StatsScreen({ workouts = [], prs = [], volumeTrend = [], onNav, profile
 
   useEffect(() => {
     const ids = workouts.map(w => w.id).filter(Boolean);
-    getWorkoutSets(ids).then(data => { setSets(data); setLoadingSets(false); });
+    fetchSets(ids).then(data => { setSets(data); setLoadingSets(false); });
   }, [workouts]);
 
   // Time filter
@@ -2568,7 +2596,7 @@ async function generatePDF(workouts, sets, prs, dateRangeLabel, userName) {
 }
 
 /* ═══ EXPORT MODAL ═══ */
-function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, initialType = "both", userName }) {
+function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, initialType = "both", userName, fetchSets = getWorkoutSets }) {
   const isFree = plan === "free";
   const [exportType, setExportType] = useState(initialType);
   const [dateRange, setDateRange] = useState("all");
@@ -2595,7 +2623,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
       }
 
       const ids = filtered.map(wo => wo.id).filter(Boolean);
-      const sets = ids.length > 0 ? await getWorkoutSets(ids) : [];
+      const sets = ids.length > 0 ? await fetchSets(ids) : [];
 
       const filteredPRs = dateRange === "all" ? prs : prs.filter(p => {
         const cutoffDays = dateRange === "90d" ? 90 : 30;
@@ -2708,7 +2736,7 @@ function ExportModal({ plan, workouts = [], prs = [], onClose, onShowPricing, in
 
 // === SECTION: History ===
 /* ═══ HISTORY ═══ */
-function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowPricing, userName, onStart }) {
+function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowPricing, userName, onStart, fetchSets = getWorkoutSets }) {
   const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
@@ -2734,7 +2762,7 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
     (async () => {
       const ids = workouts.map(w => w.id).filter(Boolean);
       if (ids.length === 0) { setLoadingSets(false); return; }
-      try { setSets(await getWorkoutSets(ids)); } catch (e) { console.error("Failed to load sets:", e); }
+      try { setSets(await fetchSets(ids)); } catch (e) { console.error("Failed to load sets:", e); }
       setLoadingSets(false);
     })();
   }, [workouts.length]);
@@ -2787,6 +2815,7 @@ function HistoryScreen({ workouts = [], prs = [], onDeleteWorkout, plan, onShowP
           onClose={() => setExportOpen(false)}
           onShowPricing={() => { setExportOpen(false); onShowPricing(); }}
           userName={userName}
+          fetchSets={fetchSets}
         />
       )}
       {dayGroups.map((group, gi) => (
@@ -2881,7 +2910,7 @@ const MUSCLE_MAP = {
 };
 
 // === SECTION: Week Detail ===
-function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
+function WeekDetailScreen({ onBack, workouts = [], prs = [], fetchSets = getWorkoutSets }) {
   const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
@@ -2916,7 +2945,7 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
       const ids = weekWorkouts.map(w => w.id).filter(Boolean);
       if (ids.length === 0) { setLoadingSets(false); return; }
       try {
-        const data = await getWorkoutSets(ids);
+        const data = await fetchSets(ids);
         setSets(data);
       } catch (e) { console.error("Failed to load sets:", e); }
       setLoadingSets(false);
@@ -3230,7 +3259,7 @@ function WeekDetailScreen({ onBack, workouts = [], prs = [] }) {
 
 // === SECTION: Day Detail ===
 /* ═══ DAY DETAIL ═══ */
-function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
+function DayDetailScreen({ onBack, date, workouts = [], prs = [], fetchSets = getWorkoutSets }) {
   const m = useMountAnimation();
   const [sets, setSets] = useState([]);
   const [loadingSets, setLoadingSets] = useState(true);
@@ -3249,7 +3278,7 @@ function DayDetailScreen({ onBack, date, workouts = [], prs = [] }) {
     (async () => {
       const ids = dayWorkouts.map(w => w.id).filter(Boolean);
       if (ids.length === 0) { setLoadingSets(false); return; }
-      try { setSets(await getWorkoutSets(ids)); } catch (e) { console.error("Failed to load sets:", e); }
+      try { setSets(await fetchSets(ids)); } catch (e) { console.error("Failed to load sets:", e); }
       setLoadingSets(false);
     })();
   }, [date]);
@@ -5777,7 +5806,7 @@ function MacroPieChart({ protein, carbs, fat, size = 64 }) {
   );
 }
 
-function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
+function NutritionScreen({ profile, workouts = [], onBack, onNav, isGuest = false, guestFoodLogs = [], guestWater = 0, guestGoals = null }) {
   const m = useMountAnimation();
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [foodLogs, setFoodLogs] = useState([]);
@@ -5814,6 +5843,15 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
   // Load data
   const loadDay = async (date) => {
     setLoading(true);
+    if (isGuest) {
+      const isToday = date === new Date().toISOString().split("T")[0];
+      setFoodLogs(isToday ? guestFoodLogs : []);
+      setWaterTotal(isToday ? guestWater : 0);
+      setFavorites([]);
+      setRecentFoods([]);
+      setLoading(false);
+      return;
+    }
     const [logs, water, favs, recent] = await Promise.all([
       getFoodLogs(date),
       getWaterTotal(date),
@@ -5829,6 +5867,11 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
 
   useEffect(() => {
     (async () => {
+      if (isGuest) {
+        if (guestGoals) { setGoals(guestGoals); setGoalActivity(guestGoals.activity_level || "moderate"); setGoalType(guestGoals.goal_type || "maintain"); }
+        await loadDay(selectedDate);
+        return;
+      }
       const g = await getNutritionGoals();
       if (g) { setGoals(g); setGoalActivity(g.activity_level || "moderate"); setGoalType(g.goal_type || "maintain"); }
       else if (profile) {
@@ -5890,6 +5933,7 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
   const goNext = () => { const d = new Date(selectedDate); d.setDate(d.getDate() + 1); if (d <= new Date()) setSelectedDate(d.toISOString().split("T")[0]); };
 
   const handleAddFood = async (food, mealType) => {
+    if (isGuest) { setShowAddFood(null); return; }
     const scaled = food.per_100g ? scaleNutrition(food, servingGrams, numServings) : {
       calories: food.calories, protein_g: food.protein_g, carbs_g: food.carbs_g, fat_g: food.fat_g,
       fiber_g: food.fiber_g || 0, sugar_g: food.sugar_g || 0, sodium_mg: food.sodium_mg || 0,
@@ -5932,6 +5976,7 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
   };
 
   const handleAddWater = async (ml) => {
+    if (isGuest) return;
     try {
       await addWaterLog(selectedDate, ml);
       setWaterTotal(prev => prev + ml);
@@ -5939,6 +5984,7 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
   };
 
   const handleSaveGoals = async () => {
+    if (isGuest) { setShowGoals(false); return; }
     const auto = calculateGoalsFromProfile(profile || {}, goalActivity, goalType);
     const newGoals = { calories: auto.calories, protein_g: auto.protein_g, carbs_g: auto.carbs_g, fat_g: auto.fat_g, activity_level: goalActivity, goal_type: goalType, calculation_method: "auto", water_goal_ml: goals?.water_goal_ml || 2500 };
     try {
@@ -5949,6 +5995,7 @@ function NutritionScreen({ profile, workouts = [], onBack, onNav }) {
   };
 
   const handleQuickAdd = async () => {
+    if (isGuest) { setShowAddFood(null); return; }
     const cals = parseInt(quickCals) || 0;
     if (cals === 0 && !quickName) return;
     const entry = {
@@ -6935,6 +6982,8 @@ export default function GAIns() {
     () => localStorage.getItem("iconStyle") || "emoji"
   );
   const [user, setUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const [showGuestSignupPrompt, setShowGuestSignupPrompt] = useState(false);
   const [profile, setProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
@@ -7254,6 +7303,7 @@ export default function GAIns() {
 
   const handleLogout = async () => {
     setUser(null);
+    setIsGuest(false);
     setProfile(null);
     setScreen("home");
     window.history.replaceState({ screen: "home" }, "");
@@ -7262,7 +7312,9 @@ export default function GAIns() {
     setAppPRs([]);
     setAppVolumeTrend([]);
     setCustomExercises([]);
-    try { await signOut(); } catch (e) { console.error("Sign out error:", e); }
+    if (!isGuest) {
+      try { await signOut(); } catch (e) { console.error("Sign out error:", e); }
+    }
   };
 
   const handleDeleteAccountConfirm = async () => {
@@ -7320,7 +7372,7 @@ export default function GAIns() {
     );
   }
 
-  if (!user) {
+  if (!user && !isGuest) {
     const refreshAuth = async () => {
       const session = await getSession();
       if (session?.user) {
@@ -7334,6 +7386,18 @@ export default function GAIns() {
       }
     };
 
+    const handleGuestMode = async () => {
+      setIsGuest(true);
+      setProfile(GUEST_PROFILE);
+      setPlan(GUEST_PROFILE.plan);
+      setAppWorkouts(GUEST_WORKOUTS);
+      setAppPRs(GUEST_PRS);
+      setAppVolumeTrend(GUEST_VOLUME_TREND);
+      setDataLoaded(true);
+      // Load programs (read-only, no auth required via RLS anon select)
+      try { const progs = await getPrograms(); setAppPrograms(progs || []); } catch (e) { /* no-op */ }
+    };
+
     return (
       <div className="app-shell" style={{ background: C.bg, overflow: "hidden", fontFamily: C.font, position: "relative" }}>
         <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -7345,7 +7409,7 @@ export default function GAIns() {
         {legalScreen ? (
           <LegalScreen onBack={() => setLegalScreen(null)} initialTab={legalScreen} />
         ) : (
-          <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} onGoogleSignIn={refreshAuth} onLegal={(tab) => setLegalScreen(tab)} />
+          <AuthScreen onSignUp={refreshAuth} onSignIn={refreshAuth} onGoogleSignIn={refreshAuth} onLegal={(tab) => setLegalScreen(tab)} onGuest={handleGuestMode} />
         )}
       </div>
     );
@@ -7504,6 +7568,13 @@ export default function GAIns() {
           ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
         }
       `}</style>
+      {/* Guest mode banner */}
+      {isGuest && (
+        <div style={{ background: `${C.accent}18`, borderBottom: `1px solid ${C.accent}30`, padding: "7px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <span style={{ fontSize: 11, fontFamily: C.mono, color: C.accent, fontWeight: 600 }}>👀 Demo mode — data is not saved</span>
+          <button onClick={() => setShowGuestSignupPrompt(true)} style={{ fontSize: 11, fontFamily: C.mono, fontWeight: 700, color: C.bg, background: C.accent, border: "none", borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>Sign Up Free</button>
+        </div>
+      )}
       {/* Offline / syncing banner */}
       {(!isOnline || syncing || pendingSync > 0) && (
         <div style={{
@@ -7537,7 +7608,7 @@ export default function GAIns() {
       )}
 
       <div ref={scrollRef} style={{ flex: 1, overflowY: screen === "coach" ? "hidden" : "auto", overflowX: "hidden", display: "flex", flexDirection: "column" }}>
-        {screen === "home" && <HomeScreen onStart={() => nav("pick")} onNav={nav} plan={plan} user={user} profile={profile} onProfileClick={() => setProfileModalOpen(true)} onNavLibrary={() => { setLibContext(null); nav("exercise_library"); }} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onDayClick={(d) => { setDayDetailDate(d); nav("dayDetail"); }} todayWorkout={scheduledWorkoutForToday} onStartScheduled={startScheduledWorkout} enrollment={activeEnrollment} />}
+        {screen === "home" && <HomeScreen onStart={() => isGuest ? setShowGuestSignupPrompt(true) : nav("pick")} onNav={(t) => isGuest && ["coach", "workout", "pick"].includes(t) ? setShowGuestSignupPrompt(true) : nav(t)} plan={plan} user={isGuest ? { email: "demo@gainsapp.com" } : user} profile={profile} onProfileClick={() => isGuest ? setShowGuestSignupPrompt(true) : setProfileModalOpen(true)} onNavLibrary={() => { setLibContext(null); nav("exercise_library"); }} workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onDayClick={(d) => { setDayDetailDate(d); nav("dayDetail"); }} todayWorkout={scheduledWorkoutForToday} onStartScheduled={isGuest ? () => setShowGuestSignupPrompt(true) : startScheduledWorkout} enrollment={activeEnrollment} />}
         {screen === "pick" && <TemplatePicker onSelect={(t) => { setTpl(t); nav("workout"); }} onBack={() => nav("home")} />}
         {screen === "workout" && tpl && <WorkoutScreen template={tpl} isOnline={isOnline} user={user} prs={appPRs} profile={profile} onShowPricing={() => nav("pricing")} onBrowseLibrary={() => { setLibContext("workout"); nav("exercise_library"); }} customExercises={customExercises} onFinish={(prs) => {
           setPendingSync(getPendingCount());
@@ -7563,19 +7634,41 @@ export default function GAIns() {
           }
           else if (!tpl.scheduledWorkoutId) { nav("home"); }
         }} onBack={() => nav("home")} />}
-        {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => setProgramOnboardingProgram(p)} onStartWorkout={startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => setShowProgramBuilder(true)} onDeleteProgram={async (id) => { try { await deleteUserProgram(id); refreshAppData(); } catch (e) { console.error(e); } }} />}
+        {screen === "program" && !programOnboardingProgram && !showProgramBuilder && <ProgramScreen enrollment={activeEnrollment} programs={appPrograms} profile={profile} prs={appPRs} onStartOnboarding={(p) => isGuest ? setShowGuestSignupPrompt(true) : setProgramOnboardingProgram(p)} onStartWorkout={isGuest ? () => setShowGuestSignupPrompt(true) : startScheduledWorkout} onAbandon={handleAbandonProgram} onNav={nav} highlightProgramId={highlightProgramId} onClearHighlight={() => setHighlightProgramId(null)} scheduleRefreshKey={scheduleRefreshKey} onCreateProgram={() => isGuest ? setShowGuestSignupPrompt(true) : setShowProgramBuilder(true)} onDeleteProgram={async (id) => { try { await deleteUserProgram(id); refreshAppData(); } catch (e) { console.error(e); } }} />}
         {screen === "program" && !programOnboardingProgram && showProgramBuilder && <ProgramBuilderScreen onBack={() => setShowProgramBuilder(false)} onCreated={(newProgram) => { setShowProgramBuilder(false); setHighlightProgramId(newProgram.id); refreshAppData(); }} />}
         {screen === "program" && programOnboardingProgram && <ProgramOnboardingScreen program={programOnboardingProgram} profile={profile} prs={appPRs} onEnroll={(enr) => { setActiveEnrollment(enr); setProgramOnboardingProgram(null); refreshAppData(); }} onBack={() => setProgramOnboardingProgram(null)} />}
-        {screen === "coach" && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} customExercises={customExercises} profile={profile} />}
+        {screen === "coach" && !isGuest && <AICoachScreen plan={plan} queriesUsed={queriesUsed} onUseQuery={() => setQueriesUsed(q => q + 1)} onShowPricing={() => nav("pricing")} activeEnrollment={activeEnrollment} onNavigate={nav} onProgramCreated={(programId) => { setHighlightProgramId(programId); refreshAppData(); }} customExercises={customExercises} profile={profile} />}
+        {screen === "coach" && isGuest && (
+          <div style={{ padding: "40px 24px", display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", flex: 1, justifyContent: "center" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>🧠</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#fff", fontFamily: C.font, marginBottom: 8 }}>AI Coach</div>
+            <div style={{ fontSize: 14, color: C.dim, lineHeight: 1.7, marginBottom: 8 }}>
+              Your AI coach analyses your real workout history to give personalised advice — strength trends, plateau-breaking plans, recovery tips, and more.
+            </div>
+            <div style={{ background: `${C.ai}10`, border: `1px solid ${C.ai}30`, borderRadius: 14, padding: "16px 18px", marginBottom: 28, width: "100%", textAlign: "left" }}>
+              <div style={{ fontSize: 12, color: C.ai, fontFamily: C.mono, fontWeight: 700, marginBottom: 10, letterSpacing: 1 }}>SAMPLE CONVERSATION</div>
+              {GUEST_AI_MESSAGES.slice(0, 4).map((m, i) => (
+                <div key={i} style={{ marginBottom: 10, display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                  <div style={{ maxWidth: "90%", padding: "10px 14px", borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px", background: m.role === "user" ? `${C.accent}20` : `${C.ai}15`, border: `1px solid ${m.role === "user" ? C.accent : C.ai}25` }}>
+                    <div style={{ fontSize: 12, color: "#fff", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{m.content.length > 180 ? m.content.slice(0, 180) + "…" : m.content}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setShowGuestSignupPrompt(true)} style={{ width: "100%", padding: "15px", borderRadius: 14, border: "none", background: `linear-gradient(135deg, ${C.ai}, #7B4CFF)`, color: "#fff", fontSize: 15, fontWeight: 800, fontFamily: C.font, cursor: "pointer" }}>
+              Sign Up to Chat with Your Coach →
+            </button>
+          </div>
+        )}
         {screen === "pricing" && <PricingScreen currentPlan={plan} onSelect={(p) => { setPlan(p); setQueriesUsed(0); nav("coach"); }} onBack={() => nav("coach")} />}
-        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} plan={plan} onShowPricing={() => nav("pricing")} userName={userName} onStart={() => nav("pick")} />}
-        {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onNav={nav} profile={profile} />}
+        {screen === "history" && <HistoryScreen workouts={appWorkouts} prs={appPRs} onDeleteWorkout={handleDeleteWorkout} plan={plan} onShowPricing={() => nav("pricing")} userName={userName} onStart={() => nav("pick")} fetchSets={isGuest ? getGuestWorkoutSets : getWorkoutSets} />}
+        {screen === "stats" && <StatsScreen workouts={appWorkouts} prs={appPRs} volumeTrend={appVolumeTrend} onNav={nav} profile={profile} fetchSets={isGuest ? getGuestWorkoutSets : getWorkoutSets} />}
         {screen === "volumeDashboard" && <VolumeDashboardScreen enrollment={activeEnrollment} volumeStandards={volumeStandards} onBack={() => nav("program")} />}
-        {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
-        {screen === "dayDetail" && dayDetailDate && <DayDetailScreen date={dayDetailDate} workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} />}
+        {screen === "weekDetail" && <WeekDetailScreen workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} fetchSets={isGuest ? getGuestWorkoutSets : getWorkoutSets} />}
+        {screen === "dayDetail" && dayDetailDate && <DayDetailScreen date={dayDetailDate} workouts={appWorkouts} prs={appPRs} onBack={() => nav("home")} fetchSets={isGuest ? getGuestWorkoutSets : getWorkoutSets} />}
         {screen === "prs" && <PRScreen prs={appPRs} onBack={() => nav("home")} />}
         {screen === "notifications" && <NotificationScreen onBack={() => nav("home")} />}
-        {screen === "nutrition" && <NutritionScreen profile={profile} workouts={appWorkouts} onBack={() => nav("home")} onNav={nav} />}
+        {screen === "nutrition" && <NutritionScreen profile={profile} workouts={appWorkouts} onBack={() => nav("home")} onNav={nav} isGuest={isGuest} guestFoodLogs={GUEST_FOOD_LOGS} guestWater={GUEST_WATER_TOTAL} guestGoals={GUEST_NUTRITION_GOALS} />}
         {screen === "exercise_library" && (
           <ExerciseLibraryScreen
             onBack={() => nav(libContext === "workout" ? "workout" : "home")}
@@ -7596,10 +7689,17 @@ export default function GAIns() {
       </div>
       {!["workout", "pricing", "prs", "notifications", "weekDetail", "dayDetail", "volumeDashboard", "exercise_library", "nutrition"].includes(screen) && (
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "calc(72px + env(safe-area-inset-bottom, 0px))", background: `linear-gradient(to top, ${C.bg} 70%, transparent)`, display: "flex", justifyContent: "space-around", alignItems: "flex-start", paddingTop: 10 }}>
-          {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : t.id === "program" ? (activeEnrollment ? C.accent : C.dim) : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 12px" }}><span style={{ fontSize: 18, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
+          {tabs.map(t => (<button key={t.id} onClick={() => nav(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, color: tab === t.id ? (t.id === "coach" ? C.ai : t.id === "program" ? (activeEnrollment ? C.accent : C.dim) : C.accent) : "rgba(255,255,255,0.2)", transition: "color .2s ease", padding: "4px 12px", position: "relative" }}><span style={{ fontSize: 18, lineHeight: 1 }}>{t.icon}</span><span style={{ fontSize: 9, fontWeight: 600, fontFamily: C.mono, letterSpacing: .5 }}>{t.label}</span></button>))}
         </div>
       )}
       <div style={{ position: "absolute", bottom: "calc(6px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)", width: 134, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.12)" }} />
+
+      {showGuestSignupPrompt && (
+        <GuestSignupPrompt
+          onClose={() => setShowGuestSignupPrompt(false)}
+          onSignUp={() => { setIsGuest(false); setShowGuestSignupPrompt(false); setAppWorkouts([]); setAppPRs([]); setAppVolumeTrend([]); setProfile(null); setPlan("free"); setDataLoaded(false); setScreen("home"); }}
+        />
+      )}
 
       {legalScreen && (
         <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 550, display: "flex", flexDirection: "column" }}>
